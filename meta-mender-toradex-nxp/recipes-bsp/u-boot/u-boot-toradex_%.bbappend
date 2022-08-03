@@ -1,4 +1,4 @@
-FILESEXTRAPATHS:prepend:mender-uboot := "${THISDIR}/files:"
+FILESEXTRAPATHS:prepend:mender-uboot := "${THISDIR}/files:${THISDIR}/files/${TORADEX_BSP_VERSION}:"
 
 include ${@mender_feature_is_enabled("mender-uboot","recipes-bsp/u-boot/u-boot-mender.inc","",d)}
 
