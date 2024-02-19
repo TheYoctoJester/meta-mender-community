@@ -91,7 +91,3 @@ saveenv
 saveenv
 reset
 ```
-
-## References
-- See specifics for the Compulab CL-SOM-iMX8 board at [Mender Hub](https://hub.mender.io/t/compulab-cl-som-imx8/416).
-- See specifics for the Variscite DART-MX8M-MINI board at [Mender Hub](https://hub.mender.io/TBD).
