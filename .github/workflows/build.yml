@@ -75,6 +75,7 @@ jobs:
           verdin-imx8mm,
           verdin-imx8mp,
           imx8mm-var-dart,
+          imx8mm-var-dart-sdcard,
           sama5d27-som1-ek-sd,
           sama5d3-xplained,
           intel-corei7-64,
