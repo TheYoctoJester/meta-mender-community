@@ -1,0 +1,35 @@
+header:
+  version: 11
+  includes:
+  - kas/include/mender-full.yml
+  - kas/include/poky.yml
+  - kas/include/nxp.yml
+  - kas/include/variscite.yml
+
+repos:
+  meta-freescale:
+    refspec: c82d4634e7aba8bc0de73ce1dfc997b630051571
+  meta-freescale-distro:
+    refspec: d5bbb487b2816dfc74984a78b67f7361ce404253
+  meta-imx:
+    url: https://github.com/nxp-imx/meta-imx
+    refspec: 50a2efab679658c3e1f7361942a413b8808b3c72
+    layers:
+      meta-bsp:
+      meta-sdk:
+
+local_conf_header:
+  fsl: |
+    ACCEPT_FSL_EULA = "1"
+
+  imx8mm-var-dart: |
+    IMAGE_BOOT_FILES = ""
+    MENDER_IMAGE_BOOTLOADER_FILE = "u-boot-spl.bin"
+    MENDER_IMAGE_BOOTLOADER_BOOTSECTOR_OFFSET = "2"
+    MENDER_BOOT_PART_SIZE_MB = "0"
+    MENDER_IMAGE_BOOTLOADER_BOOTSECTOR_OFFSET = "64"
+    MENDER_PARTITION_ALIGNMENT = "8388608"
+    MENDER_FEATURES_ENABLE:append = " mender-uboot mender-image-sd"
+    MENDER_FEATURES_DISABLE:append = " mender-grub mender-image-uefi"
+
+machine: imx93-var-som

@@ -1,0 +1,37 @@
+From 3a02a15b38f0831759292b4d27e314725e3694f1 Mon Sep 17 00:00:00 2001
+From: Josef Holzmayr <jester@theyoctojester.info>
+Date: Tue, 27 Feb 2024 15:38:17 +0100
+Subject: [PATCH 2/2] u-boot-variscite: Mender integration to bootcmd
+
+Call the mender_setup script and pass the root partition to
+the kernel cmdline.
+
+Signed-off-by: Josef Holzmayr <jester@theyoctojester.info>
+---
+ include/configs/imx93_var_som.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/configs/imx93_var_som.h b/include/configs/imx93_var_som.h
+index fffeaa5c48..6357ff17d9 100644
+--- a/include/configs/imx93_var_som.h
++++ b/include/configs/imx93_var_som.h
+@@ -82,7 +82,7 @@
+ 	"mmcautodetect=yes\0" \
+ 	"optargs=setenv bootargs ${bootargs} ${kernelargs};\0" \
+ 	"mmcargs=setenv bootargs ${jh_clk} console=${console} \
+-		root=/dev/mmcblk${mmcblk}p${mmcpart} rootwait rw\0 " \
++		root=${mender_boot_part_name} rootwait rw\0 " \
+ 	"loadbootscript=load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${bootdir}/${script};\0" \
+ 	"bootscript=echo Running bootscript from mmc ...; " \
+ 		"source\0" \
+@@ -149,6 +149,7 @@
+ 			"fi;" \
+ 		"fi;\0" \
+ 	"bsp_bootcmd=echo Running BSP bootcmd ...; " \
++		"run mender_setup; " \
+ 		"mmc dev ${mmcdev}; if mmc rescan; then " \
+ 		   "if run loadbootscript; then " \
+ 			   "run bootscript; " \
+-- 
+2.39.2
+
