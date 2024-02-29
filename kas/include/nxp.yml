@@ -24,6 +24,5 @@ local_conf_header:
     MENDER_BOOT_PART_SIZE_MB = "64"
     MENDER_STORAGE_TOTAL_SIZE_MB = "4096"
     IMAGE_INSTALL:append = " kernel-image kernel-devicetree"
-    IMAGE_FSTYPES:remove = " rpi-sdimg"
     MENDER_FEATURES_ENABLE:append = " mender-uboot mender-image-sd"
     MENDER_FEATURES_DISABLE:append = " mender-grub mender-image-uefi"
