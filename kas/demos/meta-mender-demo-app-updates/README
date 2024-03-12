@@ -1,0 +1,57 @@
+This README file contains information on the contents of the meta-mender-demo-app-updates layer.
+
+Please see the corresponding sections below for details.
+
+Dependencies
+============
+
+  URI: https://git.openembedded.org/meta-openembedded
+  branch: kirkstone
+
+  URI: https://github.com/mendersoftware/meta-mender
+  branch: kirkstone
+
+  URI: https://git.yoctoproject.org/meta-virtualization
+  branch: kirkstone
+
+  URI: https://github.com/agherzan/meta-raspberrypi
+  branch: kirkstone
+
+Contributions
+=============
+
+Please the README file in the top level directory.
+
+Table of Contents
+=================
+
+  I. Adding the meta-mender-demo-app-updates layer to your build
+ II. Purpose
+III. Included functionality
+
+
+I. Adding the meta-mender-demo-app-updates layer to your build
+=================================================
+
+Run 'bitbake-layers add-layer meta-mender-demo-app-updates'
+
+II. Purpose
+===========
+
+The layer contains an example setup for a Yocto build which is enabled
+to receive k3s/k8s orchestrated application updates, as described
+in the [Mender documentation](https://docs.mender.io/artifact-creation/create-an-artifact/kubernetes).
+
+The example image "mender-app-update-image" installs the required Update Module
+onto a `core-image-full-cmdline` image.
+
+III. Included functionality
+===========================
+
+The docker-compose based Update Module requires
+- k3s or k8s to be installed
+- the respective kernel features to be enabled
+
+This is provided by the `meta-virtualization` layer.
+
+For the Raspberry Pi, an addition to the kernel command line is required. In the demo layer, this is added through `rpi-cmdline.bbappend` in a dynamic layer structure.

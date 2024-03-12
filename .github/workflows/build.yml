@@ -95,6 +95,9 @@ jobs:
             experimental: true
           - board: stm32mp15-disco
             experimental: true
+          - board: raspberrypi4-64-app-updates
+            experimental: true
+            subpath: demos
 
     runs-on: [self-hosted, linux, x64]
     container:

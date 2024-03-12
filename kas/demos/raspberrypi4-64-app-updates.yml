@@ -1,0 +1,35 @@
+header:
+  version: 11
+  includes:
+  - kas/raspberrypi4-64.yml
+
+repos:
+  meta-openembedded:
+    layers:
+      meta-python:
+      meta-networking:
+      meta-filesystems:
+
+  meta-virtualization:
+    url: git://git.yoctoproject.org/meta-virtualization
+    refspec: 7902664f89678164b7fc90d421cee74cbec51cdf
+
+  meta-mender:
+    layers:
+      meta-mender-demo:
+  
+  meta-mender-community:
+    layers:
+      meta-mender-update-modules:
+      kas/demos/meta-mender-demo-app-updates:
+
+local_conf_header:
+  app-updates: |
+    MENDER_STORAGE_TOTAL_SIZE_MB_DEFAULT = "6144"
+    MENDER_DATA_PART_SIZE_MB = "896"
+    MENDER_BOOT_PART_SIZE_MB = "128"
+    MENDER_FEATURES_ENABLE:append = " mender-growfs-data"
+    DISTRO_FEATURES:append = " virtualization k3s seccomp"
+
+target:
+  - mender-app-update-image
