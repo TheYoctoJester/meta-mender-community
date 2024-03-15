@@ -2,10 +2,6 @@ header:
   version: 11
 
 repos:
-  # needs a specific version due to versioned overrides, like gstreamer
-  openembedded-core:
-    url: http://git.openembedded.org/openembedded-core
-    refspec: f7766da462905ec67bf549d46b8017be36cd5b2a
   meta-openembedded:
     layers:
       meta-python:
@@ -21,7 +17,7 @@ repos:
     refspec: 5b71df60e523423b9df6793de9387f87a149ac42
   meta-st-openstlinux:
     url: https://github.com/STMicroelectronics/meta-st-openstlinux
-    refspec: cb736b403d0fef2a02390695613b6b4bb13ca1b7
+    refspec: 03daeb62ccffa2e29c20ee97154dc18dda4fbd60
   meta-st-stm32mp:
     url: https://github.com/STMicroelectronics/meta-st-stm32mp
     refspec: ca501bd7dbe023682903ceedddaacd940b0898f4
@@ -49,3 +45,5 @@ local_conf_header:
       mender-grub \
       mender-image-uefi \
     "
+    BBMASK += "meta-st-openstlinux/recipes-multimedia/gstreamer"
+
