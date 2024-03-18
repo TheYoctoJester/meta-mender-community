@@ -1,28 +1,17 @@
-name: build boards
+name: build boards, client 3.x
 
 on:
-  push:
-  schedule:
-    # * is a special character in YAML so you have to quote this string
-    - cron:  '5 2 * * 6'
+  workflow_run:
+    workflows: ["prepare for build"]
+    types: 
+      - completed
 
 env:
   BUILDDIR: gh
 
 jobs:
-  prepare:
-    runs-on: [self-hosted, linux, x64]
-    steps:
-      - name: Clean up
-        run: rm -fR $BUILDDIR
-      - uses: actions/checkout@v4
-      - name: cache metadata layers
-        run: ./ci/update-repos
-        env:
-          LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
-
   build:
-    needs: [prepare]
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
