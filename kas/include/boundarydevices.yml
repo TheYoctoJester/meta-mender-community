@@ -4,4 +4,4 @@ header:
 repos:
   meta-boundary:
     url: https://github.com/boundarydevices/meta-boundary.git
-    refspec: a923c43ec40bd406e719df7bd645f7da0728ec7a
+    refspec: 01efa1d2eb7851247d1d8caa272d0ae9798a9ae8
