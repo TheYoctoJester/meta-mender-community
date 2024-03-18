@@ -2,19 +2,12 @@ header:
   version: 11
 
 repos:
-  openembedded-core:
-    refspec: f7766da462905ec67bf549d46b8017be36cd5b2a
   meta-freescale:
     refspec: ded147b76123365f2700fd8cab402869eca3219a
   meta-freescale-3rdparty:
     refspec: 5977197340c7a7db17fe3e02a4e014ad997565ae
   meta-freescale-distro:
     refspec: ecd571288e41a8b6195f226b61be330072e42f81
-  meta-yocto:
-    url: https://git.yoctoproject.org/git/meta-yocto
-    refspec: ca9c465e37b693ab768ee8e21a929d1c18956e98
-    layers:
-      meta-poky:
   meta-openembedded:
     refspec: a8055484f2829e8dfd03d5c8520b2c611aa7ebd2
     layers:
