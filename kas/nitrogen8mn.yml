@@ -5,4 +5,4 @@ header:
   - kas/include/nxp.yml
   - kas/include/boundarydevices.yml
 
-machine: nitrogen8m
+machine: nitrogen8mn
