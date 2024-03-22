@@ -1,0 +1,2835 @@
+From 0429c9330c6ed60dbf028009a1916f175b613458 Mon Sep 17 00:00:00 2001
+From: = <=>
+Date: Tue, 12 Mar 2024 22:25:20 +0000
+Subject: [PATCH 1/3] RPi 5 DTB
+
+---
+ arch/arm/dts/bcm2712-rpi-5-b.dts |  861 ++++++++++++++++++++
+ arch/arm/dts/bcm2712-rpi.dtsi    |  283 +++++++
+ arch/arm/dts/bcm2712.dtsi        | 1287 ++++++++++++++++++++++++++++++
+ configs/rpi_5_defconfig          |   58 ++
+ include/dt-bindings/clock/rp1.h  |   52 ++
+ include/dt-bindings/mfd/rp1.h    |  235 ++++++
+ 6 files changed, 2776 insertions(+)
+ create mode 100644 arch/arm/dts/bcm2712-rpi-5-b.dts
+ create mode 100644 arch/arm/dts/bcm2712-rpi.dtsi
+ create mode 100644 arch/arm/dts/bcm2712.dtsi
+ create mode 100644 configs/rpi_5_defconfig
+ create mode 100644 include/dt-bindings/clock/rp1.h
+ create mode 100644 include/dt-bindings/mfd/rp1.h
+
+diff --git a/arch/arm/dts/bcm2712-rpi-5-b.dts b/arch/arm/dts/bcm2712-rpi-5-b.dts
+new file mode 100644
+index 0000000000..d960bc456b
+--- /dev/null
++++ b/arch/arm/dts/bcm2712-rpi-5-b.dts
+@@ -0,0 +1,861 @@
++// SPDX-License-Identifier: GPL-2.0
++/dts-v1/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/clock/rp1.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++#include <dt-bindings/mfd/rp1.h>
++#include <dt-bindings/pwm/pwm.h>
++#include <dt-bindings/reset/raspberrypi,firmware-reset.h>
++
++#define i2c0 _i2c0
++#define i2c3 _i2c3
++#define i2c4 _i2c4
++#define i2c5 _i2c5
++#define i2c6 _i2c6
++#define i2c8 _i2c8
++#define i2s _i2s
++#define pwm0 _pwm0
++#define pwm1 _pwm1
++#define spi0 _spi0
++#define spi3 _spi3
++#define spi4 _spi4
++#define spi5 _spi5
++#define spi6 _spi6
++#define uart0 _uart0
++#define uart2 _uart2
++#define uart3 _uart3
++#define uart4 _uart4
++#define uart5 _uart5
++
++#include "bcm2712.dtsi"
++
++#undef i2c0
++#undef i2c3
++#undef i2c4
++#undef i2c5
++#undef i2c6
++#undef i2c8
++#undef i2s
++#undef pwm0
++#undef pwm1
++#undef spi0
++#undef spi3
++#undef spi4
++#undef spi5
++#undef spi6
++#undef uart0
++#undef uart2
++#undef uart3
++#undef uart4
++#undef uart5
++
++/ {
++	compatible = "raspberrypi,5-model-b", "brcm,bcm2712";
++	model = "Raspberry Pi 5";
++
++	/* Will be filled by the bootloader */
++	memory@0 {
++		device_type = "memory";
++		reg = <0 0 0x28000000>;
++	};
++
++	leds: leds {
++		compatible = "gpio-leds";
++
++		pwr_led: led-pwr {
++			label = "PWR";
++			gpios = <&rp1_gpio 44 GPIO_ACTIVE_LOW>;
++			default-state = "off";
++			linux,default-trigger = "none";
++		};
++
++		act_led: led-act {
++			label = "ACT";
++			gpios = <&gio_aon 9 GPIO_ACTIVE_LOW>;
++			default-state = "off";
++			linux,default-trigger = "mmc0";
++		};
++	};
++
++	sd_io_1v8_reg: sd_io_1v8_reg {
++		compatible = "regulator-gpio";
++		regulator-name = "vdd-sd-io";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-boot-on;
++		regulator-always-on;
++		regulator-settling-time-us = <5000>;
++		gpios = <&gio_aon 3 GPIO_ACTIVE_HIGH>;
++		states = <1800000 0x1
++			  3300000 0x0>;
++		status = "okay";
++	};
++
++	sd_vcc_reg: sd_vcc_reg {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc-sd";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-boot-on;
++		enable-active-high;
++		gpios = <&gio_aon 4 GPIO_ACTIVE_HIGH>;
++		status = "okay";
++	};
++
++	wl_on_reg: wl_on_reg {
++		compatible = "regulator-fixed";
++		regulator-name = "wl-on-regulator";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		pinctrl-0 = <&wl_on_pins>;
++		pinctrl-names = "default";
++
++		gpio = <&gio 28 GPIO_ACTIVE_HIGH>;
++
++		startup-delay-us = <150000>;
++		enable-active-high;
++	};
++
++	clocks: clocks {
++	};
++
++	cam1_clk: cam1_clk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		status = "disabled";
++	};
++
++	cam0_clk: cam0_clk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		status = "disabled";
++	};
++
++	cam0_reg: cam0_reg {
++		compatible = "regulator-fixed";
++		regulator-name = "cam0_reg";
++		enable-active-high;
++		status = "okay";
++		gpio = <&rp1_gpio 34 0>;  // CD0_IO0_MICCLK, to MIPI 0 connector
++	};
++
++	cam1_reg: cam1_reg {
++		compatible = "regulator-fixed";
++		regulator-name = "cam1_reg";
++		enable-active-high;
++		status = "okay";
++		gpio = <&rp1_gpio 46 0>;  // CD1_IO0_MICCLK, to MIPI 1 connector
++	};
++
++	cam_dummy_reg: cam_dummy_reg {
++		compatible = "regulator-fixed";
++		regulator-name = "cam-dummy-reg";
++		status = "okay";
++	};
++
++	dummy: dummy {
++		// A target for unwanted overlay fragments
++	};
++
++
++	// A few extra labels to keep overlays happy
++
++	i2c0if: i2c0if {};
++	i2c0mux: i2c0mux {};
++};
++
++rp1_target: &pcie2 {
++	brcm,enable-mps-rcb;
++	brcm,vdm-qos-map = <0xbbaa9888>;
++	aspm-no-l0s;
++	status = "okay";
++};
++
++// Add some labels to 2712 device
++
++// The system UART
++uart10: &_uart0 { status = "okay"; };
++
++// The system SPI for the bootloader EEPROM
++spi10: &_spi0 { status = "okay"; };
++
++i2c_rp1boot: &_i2c3 { };
++
++#include "rp1.dtsi"
++
++&rp1 {
++	// PCIe address space layout:
++	// 00_00000000-00_00xxxxxx = RP1 peripherals
++	// 10_00000000-1x_xxxxxxxx = up to 64GB system RAM
++
++	// outbound access aimed at PCIe 0_00xxxxxx -> RP1 c0_40xxxxxx
++	// This is the RP1 peripheral space
++	ranges = <0xc0 0x40000000
++		  0x02000000 0x00 0x00000000
++		  0x00 0x00400000>;
++
++	dma-ranges =
++	// inbound RP1 1x_xxxxxxxx -> PCIe 1x_xxxxxxxx
++		     <0x10 0x00000000
++		      0x43000000 0x10 0x00000000
++		      0x10 0x00000000>,
++
++	// inbound RP1 c0_40xxxxxx -> PCIe 00_00xxxxxx
++	// This allows the RP1 DMA controller to address RP1 hardware
++		     <0xc0 0x40000000
++		      0x02000000 0x0 0x00000000
++		      0x0 0x00400000>,
++
++	// inbound RP1 0x_xxxxxxxx -> PCIe 1x_xxxxxxxx
++		     <0x00 0x00000000
++		      0x02000000 0x10 0x00000000
++		      0x10 0x00000000>;
++};
++
++// Expose RP1 nodes as system nodes with labels
++
++&rp1_dma  {
++	status = "okay";
++};
++
++&rp1_eth {
++	status = "okay";
++	phy-handle = <&phy1>;
++	phy-reset-gpios = <&rp1_gpio 32 GPIO_ACTIVE_LOW>;
++	phy-reset-duration = <5>;
++
++	phy1: ethernet-phy@1 {
++		reg = <0x1>;
++		brcm,powerdown-enable;
++	};
++};
++
++gpio: &rp1_gpio {
++	status = "okay";
++};
++
++aux: &dummy {};
++
++&rp1_usb0 {
++	pinctrl-0 = <&usb_vbus_pins>;
++	pinctrl-names = "default";
++	status = "okay";
++};
++
++&rp1_usb1 {
++	status = "okay";
++};
++
++#include "bcm2712-rpi.dtsi"
++
++i2c_csi_dsi0: &i2c6 { // Note: This is for MIPI0 connector only
++	pinctrl-0 = <&rp1_i2c6_38_39>;
++	pinctrl-names = "default";
++	clock-frequency = <100000>;
++};
++
++i2c_csi_dsi1: &i2c4 { // Note: This is for MIPI1 connector only
++	pinctrl-0 = <&rp1_i2c4_40_41>;
++	pinctrl-names = "default";
++	clock-frequency = <100000>;
++};
++
++i2c_csi_dsi: &i2c_csi_dsi1 { }; // An alias for compatibility
++
++csi0: &rp1_csi0 { };
++csi1: &rp1_csi1 { };
++dsi0: &rp1_dsi0 { };
++dsi1: &rp1_dsi1 { };
++dpi: &rp1_dpi { };
++vec: &rp1_vec { };
++dpi_gpio0:              &rp1_dpi_24bit_gpio0        { };
++dpi_gpio1:              &rp1_dpi_24bit_gpio2        { };
++dpi_18bit_cpadhi_gpio0: &rp1_dpi_18bit_cpadhi_gpio0 { };
++dpi_18bit_cpadhi_gpio2: &rp1_dpi_18bit_cpadhi_gpio2 { };
++dpi_18bit_gpio0:        &rp1_dpi_18bit_gpio0        { };
++dpi_18bit_gpio2:        &rp1_dpi_18bit_gpio2        { };
++dpi_16bit_cpadhi_gpio0: &rp1_dpi_16bit_cpadhi_gpio0 { };
++dpi_16bit_cpadhi_gpio2: &rp1_dpi_16bit_cpadhi_gpio2 { };
++dpi_16bit_gpio0:        &rp1_dpi_16bit_gpio0        { };
++dpi_16bit_gpio2:        &rp1_dpi_16bit_gpio2        { };
++
++/* Add the IOMMUs for some RP1 bus masters */
++
++&csi0 {
++	iommus = <&iommu5>;
++};
++
++&csi1 {
++	iommus = <&iommu5>;
++};
++
++&dsi0 {
++	iommus = <&iommu5>;
++};
++
++&dsi1 {
++	iommus = <&iommu5>;
++};
++
++&dpi {
++	iommus = <&iommu5>;
++};
++
++&vec {
++	iommus = <&iommu5>;
++};
++
++&ddc0 {
++	status = "disabled";
++};
++
++&ddc1 {
++	status = "disabled";
++};
++
++&hdmi0 {
++	clocks = <&firmware_clocks 13>, <&firmware_clocks 14>, <&dvp 0>, <&clk_27MHz>;
++	clock-names = "hdmi", "bvb", "audio", "cec";
++	status = "disabled";
++};
++
++&hdmi1 {
++	clocks = <&firmware_clocks 13>, <&firmware_clocks 14>, <&dvp 1>, <&clk_27MHz>;
++	clock-names = "hdmi", "bvb", "audio", "cec";
++	status = "disabled";
++};
++
++&hvs {
++	clocks = <&firmware_clocks 4>, <&firmware_clocks 16>;
++	clock-names = "core", "disp";
++};
++
++&mop {
++	status = "disabled";
++};
++
++&moplet {
++	status = "disabled";
++};
++
++&pixelvalve0 {
++	status = "disabled";
++};
++
++&pixelvalve1 {
++	status = "disabled";
++};
++
++&disp_intr {
++	status = "disabled";
++};
++
++/* SDIO1 is used to drive the SD card */
++&sdio1 {
++	pinctrl-0 = <&emmc_sd_pulls>, <&emmc_aon_cd_pins>;
++	pinctrl-names = "default";
++	vqmmc-supply = <&sd_io_1v8_reg>;
++	vmmc-supply = <&sd_vcc_reg>;
++	bus-width = <4>;
++	sd-uhs-sdr50;
++	sd-uhs-ddr50;
++	sd-uhs-sdr104;
++	//broken-cd;
++	//no-1-8-v;
++	status = "okay";
++};
++
++&pinctrl_aon {
++	emmc_aon_cd_pins: emmc_aon_cd_pins {
++		function = "sd_card_g";
++		pins = "aon_gpio5";
++		bias-pull-up;
++	};
++
++	/* Slight hack - only one PWM pin (status LED) is usable */
++	aon_pwm_1pin: aon_pwm_1pin {
++		function = "aon_pwm";
++		pins = "aon_gpio9";
++	};
++};
++
++&pinctrl {
++	pwr_button_pins: pwr_button_pins {
++		function = "gpio";
++		pins = "gpio20";
++		bias-pull-up;
++	};
++
++	wl_on_pins: wl_on_pins {
++		function = "gpio";
++		pins = "gpio28";
++	};
++
++	bt_shutdown_pins: bt_shutdown_pins {
++		function = "gpio";
++		pins = "gpio29";
++	};
++
++	emmc_sd_pulls: emmc_sd_pulls {
++		function = "emmc_dat0", "emmc_dat1", "emmc_dat2", "emmc_dat3";
++		bias-pull-up;
++	};
++};
++
++/* uarta communicates with the BT module */
++&uarta {
++	uart-has-rtscts;
++	auto-flow-control;
++	status = "okay";
++	clock-frequency = <96000000>;
++	pinctrl-0 = <&uarta_24_pins &bt_shutdown_pins>;
++	pinctrl-names = "default";
++
++	bluetooth: bluetooth {
++		compatible = "brcm,bcm43438-bt";
++		max-speed = <3000000>;
++		shutdown-gpios = <&gio 29 GPIO_ACTIVE_HIGH>;
++		local-bd-address = [ 00 00 00 00 00 00 ];
++	};
++};
++
++&i2c_rp1boot {
++	clock-frequency = <400000>;
++	pinctrl-0 = <&i2c3_m4_agpio0_pins>;
++	pinctrl-names = "default";
++};
++
++/ {
++	chosen: chosen {
++		bootargs = "reboot=w coherent_pool=1M 8250.nr_uarts=1 pci=pcie_bus_safe snd_bcm2835.enable_compat_alsa=0 snd_bcm2835.enable_hdmi=1";
++		stdout-path = "serial10:115200n8";
++	};
++
++	fan: cooling_fan {
++		status = "disabled";
++		compatible = "pwm-fan";
++		#cooling-cells = <2>;
++		cooling-min-state = <0>;
++		cooling-max-state = <3>;
++		cooling-levels = <0 75 125 175 250>;
++		pwms = <&rp1_pwm1 3 41566 PWM_POLARITY_INVERTED>;
++		rpm-regmap = <&rp1_pwm1>;
++		rpm-offset = <0x3c>;
++	};
++
++	pwr_button {
++		compatible = "gpio-keys";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwr_button_pins>;
++		status = "okay";
++
++		pwr_key: pwr {
++			label = "pwr_button";
++			// linux,code = <205>; // KEY_SUSPEND
++			linux,code = <116>; // KEY_POWER
++			gpios = <&gio 20 GPIO_ACTIVE_LOW>;
++			debounce-interval = <50>; // ms
++		};
++	};
++};
++
++&usb {
++	power-domains = <&power RPI_POWER_DOMAIN_USB>;
++};
++
++/* SDIO2 drives the WLAN interface */
++&sdio2 {
++	pinctrl-0 = <&sdio2_30_pins>;
++	pinctrl-names = "default";
++	bus-width = <4>;
++	vmmc-supply = <&wl_on_reg>;
++	sd-uhs-ddr50;
++	non-removable;
++	status = "okay";
++	#address-cells = <1>;
++	#size-cells = <0>;
++
++	wifi: wifi@1 {
++		reg = <1>;
++		compatible = "brcm,bcm4329-fmac";
++		local-mac-address = [00 00 00 00 00 00];
++	};
++};
++
++&rpivid {
++	status = "okay";
++};
++
++&pinctrl {
++	spi10_gpio2: spi10_gpio2 {
++		function = "vc_spi0";
++		pins = "gpio2", "gpio3", "gpio4";
++		bias-disable;
++	};
++
++	spi10_cs_gpio1: spi10_cs_gpio1 {
++		function = "gpio";
++		pins = "gpio1";
++		bias-pull-up;
++	};
++};
++
++spi10_pins: &spi10_gpio2 {};
++spi10_cs_pins: &spi10_cs_gpio1 {};
++
++&spi10 {
++	pinctrl-names = "default";
++	cs-gpios = <&gio 1 1>;
++	pinctrl-0 = <&spi10_pins &spi10_cs_pins>;
++
++	spidev10: spidev@0 {
++		compatible = "spidev";
++		reg = <0>;	/* CE0 */
++		#address-cells = <1>;
++		#size-cells = <0>;
++		spi-max-frequency = <20000000>;
++		status = "okay";
++	};
++};
++
++// =============================================
++// Board specific stuff here
++
++&gio_aon {
++	// Don't use GIO_AON as an interrupt controller because it will
++	// clash with the firmware monitoring the PMIC interrupt via the VPU.
++
++	/delete-property/ interrupt-controller;
++};
++
++&main_aon_irq {
++	// Don't use the MAIN_AON_IRQ interrupt controller because it will
++	// clash with the firmware monitoring the PMIC interrupt via the VPU.
++
++	status = "disabled";
++};
++
++&rp1_pwm1 {
++	status = "disabled";
++	pinctrl-0 = <&rp1_pwm1_gpio45>;
++	pinctrl-names = "default";
++};
++
++&thermal_trips {
++	cpu_tepid: cpu-tepid {
++		temperature = <50000>;
++		hysteresis = <5000>;
++		type = "active";
++	};
++
++	cpu_warm: cpu-warm {
++		temperature = <60000>;
++		hysteresis = <5000>;
++		type = "active";
++	};
++
++	cpu_hot: cpu-hot {
++		temperature = <67500>;
++		hysteresis = <5000>;
++		type = "active";
++	};
++
++	cpu_vhot: cpu-vhot {
++		temperature = <75000>;
++		hysteresis = <5000>;
++		type = "active";
++	};
++};
++
++&cooling_maps {
++	tepid {
++		trip = <&cpu_tepid>;
++		cooling-device = <&fan 1 1>;
++	};
++
++	warm {
++		trip = <&cpu_warm>;
++		cooling-device = <&fan 2 2>;
++	};
++
++	hot {
++		trip = <&cpu_hot>;
++		cooling-device = <&fan 3 3>;
++	};
++
++	vhot {
++		trip = <&cpu_vhot>;
++		cooling-device = <&fan 4 4>;
++	};
++
++	melt {
++		trip = <&cpu_crit>;
++		cooling-device = <&fan 4 4>;
++	};
++};
++
++&gio {
++	// The GPIOs above 35 are not used on Pi 5, so shrink the upper bank
++	// to reduce the clutter in gpioinfo/pinctrl
++	brcm,gpio-bank-widths = <32 4>;
++
++	gpio-line-names =
++		"-", // GPIO_000
++		"2712_BOOT_CS_N", // GPIO_001
++		"2712_BOOT_MISO", // GPIO_002
++		"2712_BOOT_MOSI", // GPIO_003
++		"2712_BOOT_SCLK", // GPIO_004
++		"-", // GPIO_005
++		"-", // GPIO_006
++		"-", // GPIO_007
++		"-", // GPIO_008
++		"-", // GPIO_009
++		"-", // GPIO_010
++		"-", // GPIO_011
++		"-", // GPIO_012
++		"-", // GPIO_013
++		"PCIE_SDA", // GPIO_014
++		"PCIE_SCL", // GPIO_015
++		"-", // GPIO_016
++		"-", // GPIO_017
++		"-", // GPIO_018
++		"-", // GPIO_019
++		"PWR_GPIO", // GPIO_020
++		"2712_G21_FS", // GPIO_021
++		"-", // GPIO_022
++		"-", // GPIO_023
++		"BT_RTS", // GPIO_024
++		"BT_CTS", // GPIO_025
++		"BT_TXD", // GPIO_026
++		"BT_RXD", // GPIO_027
++		"WL_ON", // GPIO_028
++		"BT_ON", // GPIO_029
++		"WIFI_SDIO_CLK", // GPIO_030
++		"WIFI_SDIO_CMD", // GPIO_031
++		"WIFI_SDIO_D0", // GPIO_032
++		"WIFI_SDIO_D1", // GPIO_033
++		"WIFI_SDIO_D2", // GPIO_034
++		"WIFI_SDIO_D3"; // GPIO_035
++};
++
++&gio_aon {
++	gpio-line-names =
++		"RP1_SDA", // AON_GPIO_00
++		"RP1_SCL", // AON_GPIO_01
++		"RP1_RUN", // AON_GPIO_02
++		"SD_IOVDD_SEL", // AON_GPIO_03
++		"SD_PWR_ON", // AON_GPIO_04
++		"SD_CDET_N", // AON_GPIO_05
++		"SD_FLG_N", // AON_GPIO_06
++		"-", // AON_GPIO_07
++		"2712_WAKE", // AON_GPIO_08
++		"2712_STAT_LED", // AON_GPIO_09
++		"-", // AON_GPIO_10
++		"-", // AON_GPIO_11
++		"PMIC_INT", // AON_GPIO_12
++		"UART_TX_FS", // AON_GPIO_13
++		"UART_RX_FS", // AON_GPIO_14
++		"-", // AON_GPIO_15
++		"-", // AON_GPIO_16
++
++		// Pad bank0 out to 32 entries
++		"", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
++
++		"HDMI0_SCL", // AON_SGPIO_00
++		"HDMI0_SDA", // AON_SGPIO_01
++		"HDMI1_SCL", // AON_SGPIO_02
++		"HDMI1_SDA", // AON_SGPIO_03
++		"PMIC_SCL", // AON_SGPIO_04
++		"PMIC_SDA"; // AON_SGPIO_05
++
++	rp1_run_hog {
++		gpio-hog;
++		gpios = <2 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "RP1 RUN pin";
++	};
++};
++
++&rp1_gpio {
++	gpio-line-names =
++		"ID_SD", // GPIO0
++		"ID_SC", // GPIO1
++		"PIN3", // GPIO2
++		"PIN5", // GPIO3
++		"PIN7", // GPIO4
++		"PIN29", // GPIO5
++		"PIN31", // GPIO6
++		"PIN26", // GPIO7
++		"PIN24", // GPIO8
++		"PIN21", // GPIO9
++		"PIN19", // GPIO10
++		"PIN23", // GPIO11
++		"PIN32", // GPIO12
++		"PIN33", // GPIO13
++		"PIN8", // GPIO14
++		"PIN10", // GPIO15
++		"PIN36", // GPIO16
++		"PIN11", // GPIO17
++		"PIN12", // GPIO18
++		"PIN35", // GPIO19
++		"PIN38", // GPIO20
++		"PIN40", // GPIO21
++		"PIN15", // GPIO22
++		"PIN16", // GPIO23
++		"PIN18", // GPIO24
++		"PIN22", // GPIO25
++		"PIN37", // GPIO26
++		"PIN13", // GPIO27
++
++		"PCIE_RP1_WAKE", // GPIO28
++		"FAN_TACH", // GPIO29
++		"HOST_SDA", // GPIO30
++		"HOST_SCL", // GPIO31
++		"ETH_RST_N", // GPIO32
++		"-", // GPIO33
++
++		"CD0_IO0_MICCLK", // GPIO34
++		"CD0_IO0_MICDAT0", // GPIO35
++		"RP1_PCIE_CLKREQ_N", // GPIO36
++		"-", // GPIO37
++		"CD0_SDA", // GPIO38
++		"CD0_SCL", // GPIO39
++		"CD1_SDA", // GPIO40
++		"CD1_SCL", // GPIO41
++		"USB_VBUS_EN", // GPIO42
++		"USB_OC_N", // GPIO43
++		"RP1_STAT_LED", // GPIO44
++		"FAN_PWM", // GPIO45
++		"CD1_IO0_MICCLK", // GPIO46
++		"2712_WAKE", // GPIO47
++		"CD1_IO1_MICDAT1", // GPIO48
++		"EN_MAX_USB_CUR", // GPIO49
++		"-", // GPIO50
++		"-", // GPIO51
++		"-", // GPIO52
++		"-"; // GPIO53
++
++	usb_vbus_pins: usb_vbus_pins {
++		function = "vbus1";
++		pins = "gpio42", "gpio43";
++	};
++};
++
++/ {
++	aliases: aliases {
++		blconfig = &blconfig;
++		bluetooth = &bluetooth;
++		console = &uart10;
++		ethernet0 = &rp1_eth;
++		wifi0 = &wifi;
++		fb = &fb;
++		mailbox = &mailbox;
++		mmc0 = &sdio1;
++		uart0 = &uart0;
++		uart1 = &uart1;
++		uart2 = &uart2;
++		uart3 = &uart3;
++		uart4 = &uart4;
++		uart10 = &uart10;
++		serial0 = &uart0;
++		serial1 = &uart1;
++		serial2 = &uart2;
++		serial3 = &uart3;
++		serial4 = &uart4;
++		serial10 = &uart10;
++		i2c = &i2c_arm;
++		i2c0 = &i2c0;
++		i2c1 = &i2c1;
++		i2c2 = &i2c2;
++		i2c3 = &i2c3;
++		i2c4 = &i2c4;
++		i2c5 = &i2c5;
++		i2c6 = &i2c6;
++		i2c10 = &i2c_rp1boot;
++		// Bit-bashed i2c_gpios start at 10
++		spi0 = &spi0;
++		spi1 = &spi1;
++		spi2 = &spi2;
++		spi3 = &spi3;
++		spi4 = &spi4;
++		spi5 = &spi5;
++		spi10 = &spi10;
++		gpio0 = &gpio;
++		gpio1 = &gio;
++		gpio2 = &gio_aon;
++		gpio3 = &pinctrl;
++		gpio4 = &pinctrl_aon;
++		usb0 = &rp1_usb0;
++		usb1 = &rp1_usb1;
++		drm-dsi1 = &dsi0;
++		drm-dsi2 = &dsi1;
++	};
++
++	__overrides__ {
++		bdaddr = <&bluetooth>, "local-bd-address[";
++		button_debounce = <&pwr_key>, "debounce-interval:0";
++		cooling_fan = <&fan>, "status", <&rp1_pwm1>, "status";
++		uart0_console = <&uart0>,"status", <&aliases>, "console=",&uart0;
++		i2c0 = <&i2c0>, "status";
++		i2c1 = <&i2c1>, "status";
++		i2c = <&i2c1>, "status";
++		i2c_arm = <&i2c_arm>, "status";
++		i2c_vc = <&i2c_vc>, "status";
++		i2c_csi_dsi = <&i2c_csi_dsi>, "status";
++		i2c_csi_dsi0 = <&i2c_csi_dsi0>, "status";
++		i2c_csi_dsi1 = <&i2c_csi_dsi1>, "status";
++		i2c0_baudrate = <&i2c0>, "clock-frequency:0";
++		i2c1_baudrate = <&i2c1>, "clock-frequency:0";
++		i2c_baudrate = <&i2c_arm>, "clock-frequency:0";
++		i2c_arm_baudrate = <&i2c_arm>, "clock-frequency:0";
++		i2c_vc_baudrate = <&i2c_vc>, "clock-frequency:0";
++		krnbt = <&bluetooth>, "status";
++		nvme = <&pciex1>, "status";
++		pciex1 = <&pciex1>, "status";
++		pciex1_gen = <&pciex1> , "max-link-speed:0";
++		pciex1_no_l0s = <&pciex1>, "aspm-no-l0s?";
++		pciex1_tperst_clk_ms = <&pciex1>, "brcm,tperst-clk-ms:0";
++		pcie_tperst_clk_ms = <&pciex1>, "brcm,tperst-clk-ms:0";
++		random = <&random>, "status";
++		rtc = <&rpi_rtc>, "status";
++		rtc_bbat_vchg = <&rpi_rtc>, "trickle-charge-microvolt:0";
++		spi = <&spi0>, "status";
++		suspend = <&pwr_key>, "linux,code:0=205";
++		uart0 = <&uart0>, "status";
++		wifiaddr = <&wifi>, "local-mac-address[";
++
++		act_led_activelow = <&act_led>, "active-low?";
++		act_led_trigger = <&act_led>, "linux,default-trigger";
++		pwr_led_activelow = <&pwr_led>, "gpios:8";
++		pwr_led_trigger = <&pwr_led>, "linux,default-trigger";
++		eth_led0 = <&phy1>,"led-modes:0";
++		eth_led1 = <&phy1>,"led-modes:4";
++		drm_fb0_rp1_dsi0 = <&aliases>, "drm-fb0=",&dsi0;
++		drm_fb0_rp1_dsi1 = <&aliases>, "drm-fb0=",&dsi1;
++		drm_fb0_rp1_dpi = <&aliases>, "drm-fb0=",&dpi;
++		drm_fb0_vc4 = <&aliases>, "drm-fb0=",&vc4;
++		drm_fb1_rp1_dsi0 = <&aliases>, "drm-fb1=",&dsi0;
++		drm_fb1_rp1_dsi1 = <&aliases>, "drm-fb1=",&dsi1;
++		drm_fb1_rp1_dpi = <&aliases>, "drm-fb1=",&dpi;
++		drm_fb1_vc4 = <&aliases>, "drm-fb1=",&vc4;
++		drm_fb2_rp1_dsi0 = <&aliases>, "drm-fb2=",&dsi0;
++		drm_fb2_rp1_dsi1 = <&aliases>, "drm-fb2=",&dsi1;
++		drm_fb2_rp1_dpi = <&aliases>, "drm-fb2=",&dpi;
++		drm_fb2_vc4 = <&aliases>, "drm-fb2=",&vc4;
++
++		fan_temp0 = <&cpu_tepid>,"temperature:0";
++		fan_temp1 = <&cpu_warm>,"temperature:0";
++		fan_temp2 = <&cpu_hot>,"temperature:0";
++		fan_temp3 = <&cpu_vhot>,"temperature:0";
++		fan_temp0_hyst = <&cpu_tepid>,"hysteresis:0";
++		fan_temp1_hyst = <&cpu_warm>,"hysteresis:0";
++		fan_temp2_hyst = <&cpu_hot>,"hysteresis:0";
++		fan_temp3_hyst = <&cpu_vhot>,"hysteresis:0";
++		fan_temp0_speed = <&fan>, "cooling-levels:4";
++		fan_temp1_speed = <&fan>, "cooling-levels:8";
++		fan_temp2_speed = <&fan>, "cooling-levels:12";
++		fan_temp3_speed = <&fan>, "cooling-levels:16";
++	};
++};
+diff --git a/arch/arm/dts/bcm2712-rpi.dtsi b/arch/arm/dts/bcm2712-rpi.dtsi
+new file mode 100644
+index 0000000000..e6b4edadce
+--- /dev/null
++++ b/arch/arm/dts/bcm2712-rpi.dtsi
+@@ -0,0 +1,283 @@
++// SPDX-License-Identifier: GPL-2.0
++
++#include <dt-bindings/power/raspberrypi-power.h>
++
++&soc {
++	firmware: firmware {
++		compatible = "raspberrypi,bcm2835-firmware", "simple-mfd";
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		mboxes = <&mailbox>;
++		dma-ranges;
++
++		firmware_clocks: clocks {
++			compatible = "raspberrypi,firmware-clocks";
++			#clock-cells = <1>;
++		};
++
++		reset: reset {
++			compatible = "raspberrypi,firmware-reset";
++			#reset-cells = <1>;
++		};
++
++		vcio: vcio {
++			compatible = "raspberrypi,vcio";
++		};
++	};
++
++	power: power {
++		compatible = "raspberrypi,bcm2835-power";
++		firmware = <&firmware>;
++		#power-domain-cells = <1>;
++	};
++
++	fb: fb {
++		compatible = "brcm,bcm2708-fb";
++		firmware = <&firmware>;
++		status = "okay";
++	};
++
++	rpi_rtc: rpi_rtc {
++		compatible = "raspberrypi,rpi-rtc";
++		firmware = <&firmware>;
++		status = "okay";
++		trickle-charge-microvolt = <0>;
++	};
++
++	/* Define these notional regulators for use by overlays, etc. */
++	vdd_3v3_reg: fixedregulator_3v3 {
++		compatible = "regulator-fixed";
++		regulator-always-on;
++		regulator-max-microvolt = <3300000>;
++		regulator-min-microvolt = <3300000>;
++		regulator-name = "3v3";
++	};
++
++	vdd_5v0_reg: fixedregulator_5v0 {
++		compatible = "regulator-fixed";
++		regulator-always-on;
++		regulator-max-microvolt = <5000000>;
++		regulator-min-microvolt = <5000000>;
++		regulator-name = "5v0";
++	};
++};
++
++/ {
++	__overrides__ {
++		arm_freq;
++	};
++};
++
++pciex1: &pcie1 { };
++pciex4: &pcie2 { };
++
++&dma32 {
++	/* The VPU firmware uses DMA channel 11 for VCHIQ */
++	brcm,dma-channel-mask = <0x03f>;
++};
++
++&dma40 {
++	/* The VPU firmware DMA channel 11 for VCHIQ */
++	brcm,dma-channel-mask = <0x07c0>;
++};
++
++&hdmi0 {
++	dmas = <&dma40 (10|(1<<30)|(1<<24)|(10<<16)|(15<<20))>;
++};
++
++&hdmi1 {
++	dmas = <&dma40 (17|(1<<30)|(1<<24)|(10<<16)|(15<<20))>;
++};
++
++&spi10 {
++	dmas = <&dma40 6>, <&dma40 7>;
++	dma-names = "tx", "rx";
++};
++
++&usb {
++	power-domains = <&power RPI_POWER_DOMAIN_USB>;
++};
++
++&rmem {
++	/*
++	 * RPi4's co-processor will copy the board's bootloader configuration
++	 * into memory for the OS to consume. It'll also update this node with
++	 * its placement information.
++	 */
++	blconfig: nvram@0 {
++		compatible = "raspberrypi,bootloader-config", "nvmem-rmem";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		reg = <0x0 0x0 0x0>;
++		no-map;
++		status = "disabled";
++	};
++};
++
++&rp1_adc {
++	status = "okay";
++};
++
++/* Add some gpiomem nodes to make the devices accessible to userspace.
++ * /dev/gpiomem<n> should expose the registers for the interface with DT alias
++ * gpio<n>.
++ */
++
++&rp1 {
++	gpiomem@d0000 {
++		/* Export IO_BANKs, RIO_BANKs and PADS_BANKs to userspace */
++		compatible = "raspberrypi,gpiomem";
++		reg = <0xc0 0x400d0000  0x0 0x30000>;
++		chardev-name = "gpiomem0";
++	};
++};
++
++&soc {
++	gpiomem@7d508500 {
++		compatible = "raspberrypi,gpiomem";
++		reg = <0x7d508500 0x40>;
++		chardev-name = "gpiomem1";
++	};
++
++	gpiomem@7d517c00 {
++		compatible = "raspberrypi,gpiomem";
++		reg = <0x7d517c00 0x40>;
++		chardev-name = "gpiomem2";
++	};
++
++	gpiomem@7d504100 {
++		compatible = "raspberrypi,gpiomem";
++		reg = <0x7d504100 0x20>;
++		chardev-name = "gpiomem3";
++	};
++
++	gpiomem@7d510700 {
++		compatible = "raspberrypi,gpiomem";
++		reg = <0x7d510700 0x20>;
++		chardev-name = "gpiomem4";
++	};
++};
++
++i2c0: &rp1_i2c0 { };
++i2c1: &rp1_i2c1 { };
++i2c2: &rp1_i2c2 { };
++i2c3: &rp1_i2c3 { };
++i2c4: &rp1_i2c4 { };
++i2c5: &rp1_i2c5 { };
++i2c6: &rp1_i2c6 { };
++i2s:  &rp1_i2s0 { };
++i2s_clk_producer: &rp1_i2s0 { };
++i2s_clk_consumer: &rp1_i2s1 { };
++pwm0: &rp1_pwm0 { };
++pwm1: &rp1_pwm1 { };
++pwm: &pwm0 { };
++spi0: &rp1_spi0 { };
++spi1: &rp1_spi1 { };
++spi2: &rp1_spi2 { };
++spi3: &rp1_spi3 { };
++spi4: &rp1_spi4 { };
++spi5: &rp1_spi5 { };
++
++uart0_pins: &rp1_uart0_14_15 {};
++uart0_ctsrts_pins: &rp1_uart0_ctsrts_16_17 {};
++uart0: &rp1_uart0 {
++	pinctrl-0 = <&uart0_pins>;
++};
++
++uart1_pins: &rp1_uart1_0_1 {};
++uart1_ctsrts_pins: &rp1_uart1_ctsrts_2_3 {};
++uart1: &rp1_uart1 { };
++
++uart2_pins: &rp1_uart2_4_5 {};
++uart2_ctsrts_pins: &rp1_uart2_ctsrts_6_7 {};
++uart2: &rp1_uart2 { };
++
++uart3_pins: &rp1_uart3_8_9 {};
++uart3_ctsrts_pins: &rp1_uart3_ctsrts_10_11 {};
++uart3: &rp1_uart3 { };
++
++uart4_pins: &rp1_uart4_12_13 {};
++uart4_ctsrts_pins: &rp1_uart4_ctsrts_14_15 {};
++uart4: &rp1_uart4 { };
++
++i2c_vc: &i2c0 {      // This is pins 27,28 on the header (not MIPI)
++	pinctrl-0 = <&rp1_i2c0_0_1>;
++	pinctrl-names = "default";
++	clock-frequency = <100000>;
++};
++
++i2c_arm: &i2c1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&rp1_i2c1_2_3>;
++	clock-frequency = <100000>;
++};
++
++&i2c2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&rp1_i2c2_4_5>;
++};
++
++&i2c3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&rp1_i2c3_6_7>;
++};
++
++&i2s_clk_producer {
++	pinctrl-names = "default";
++	pinctrl-0 = <&rp1_i2s0_18_21>;
++};
++
++&i2s_clk_consumer {
++	pinctrl-names = "default";
++	pinctrl-0 = <&rp1_i2s1_18_21>;
++};
++
++spi0_pins: &rp1_spi0_gpio9 {};
++spi0_cs_pins: &rp1_spi0_cs_gpio7 {};
++
++&spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi0_pins &spi0_cs_pins>;
++	cs-gpios = <&gpio 8 1>, <&gpio 7 1>;
++
++	spidev0: spidev@0 {
++		compatible = "spidev";
++		reg = <0>;	/* CE0 */
++		#address-cells = <1>;
++		#size-cells = <0>;
++		spi-max-frequency = <125000000>;
++	};
++
++	spidev1: spidev@1 {
++		compatible = "spidev";
++		reg = <1>;	/* CE1 */
++		#address-cells = <1>;
++		#size-cells = <0>;
++		spi-max-frequency = <125000000>;
++	};
++};
++
++spi2_pins: &rp1_spi2_gpio1 {};
++&spi2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi2_pins>;
++};
++
++spi3_pins: &rp1_spi3_gpio5 {};
++&spi3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi3_pins>;
++};
++
++spi4_pins: &rp1_spi4_gpio9 {};
++&spi4 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi4_pins>;
++};
++
++spi5_pins: &rp1_spi5_gpio13 {};
++&spi5 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi5_pins>;
++};
+diff --git a/arch/arm/dts/bcm2712.dtsi b/arch/arm/dts/bcm2712.dtsi
+new file mode 100644
+index 0000000000..f17e663bab
+--- /dev/null
++++ b/arch/arm/dts/bcm2712.dtsi
+@@ -0,0 +1,1287 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++#include <dt-bindings/soc/bcm2835-pm.h>
++#include <dt-bindings/phy/phy.h>
++
++/ {
++	compatible = "brcm,bcm2712", "brcm,bcm2711";
++	model = "BCM2712";
++
++	#address-cells = <2>;
++	#size-cells = <1>;
++
++	interrupt-parent = <&gicv2>;
++
++	rmem: reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <1>;
++		ranges;
++
++		atf@0 {
++			reg = <0x0 0x0 0x80000>;
++			no-map;
++		};
++
++		cma: linux,cma {
++			compatible = "shared-dma-pool";
++			size = <0x4000000>; /* 64MB */
++			reusable;
++			linux,cma-default;
++
++			/*
++			 * arm64 reserves the CMA by default somewhere in
++			 * ZONE_DMA32, that's not good enough for the BCM2711
++			 * as some devices can only address the lower 1G of
++			 * memory (ZONE_DMA).
++			 */
++			alloc-ranges = <0x0 0x00000000 0x40000000>;
++		};
++	};
++
++	thermal-zones {
++		cpu_thermal: cpu-thermal {
++			polling-delay-passive = <2000>;
++			polling-delay = <1000>;
++			coefficients = <(-550) 450000>;
++			thermal-sensors = <&thermal>;
++
++			thermal_trips: trips {
++				cpu_crit: cpu-crit {
++					temperature	= <110000>;
++					hysteresis	= <0>;
++					type		= "critical";
++				};
++			};
++
++			cooling_maps: cooling-maps {
++			};
++		};
++	};
++
++	clk_27MHz: clk-27M {
++		#clock-cells = <0>;
++		compatible = "fixed-clock";
++		clock-frequency = <27000000>;
++		clock-output-names = "27MHz-clock";
++	};
++
++	clk_108MHz: clk-108M {
++		#clock-cells = <0>;
++		compatible = "fixed-clock";
++		clock-frequency = <108000000>;
++		clock-output-names = "108MHz-clock";
++	};
++
++	hvs: hvs@107c580000 {
++		compatible = "brcm,bcm2712-hvs";
++		reg = <0x10 0x7c580000 0x1a000>;
++		interrupt-parent = <&disp_intr>;
++		interrupts = <2>, <9>, <16>;
++		interrupt-names = "ch0-eof", "ch1-eof", "ch2-eof";
++		//iommus = <&iommu4>;
++		status = "disabled";
++	};
++
++	soc: soc {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		ranges     = <0x7c000000  0x10 0x7c000000  0x04000000>;
++		/* Emulate a contiguous 30-bit address range for DMA */
++		dma-ranges = <0xc0000000  0x00 0x00000000  0x40000000>,
++			     <0x7c000000  0x10 0x7c000000  0x04000000>;
++
++		system_timer: timer@7c003000 {
++			compatible = "brcm,bcm2835-system-timer";
++			reg = <0x7c003000 0x1000>;
++			interrupts = <GIC_SPI 64 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>,
++		     		     <GIC_SPI 66 IRQ_TYPE_LEVEL_HIGH>,
++		     		     <GIC_SPI 67 IRQ_TYPE_LEVEL_HIGH>;
++			clock-frequency = <1000000>;
++		};
++
++		firmwarekms: firmwarekms@7d503000 {
++			compatible = "raspberrypi,rpi-firmware-kms-2712";
++			/* SUN_L2 interrupt reg */
++			reg = <0x7d503000 0x18>;
++			interrupt-parent = <&cpu_l2_irq>;
++			interrupts = <19>;
++			brcm,firmware = <&firmware>;
++			status = "disabled";
++		};
++
++		mailbox: mailbox@7c013880 {
++			compatible = "brcm,bcm2835-mbox";
++			reg = <0x7c013880 0x40>;
++			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
++			#mbox-cells = <0>;
++		};
++
++		pixelvalve0: pixelvalve@7c410000 {
++			compatible = "brcm,bcm2712-pixelvalve0";
++			reg = <0x7c410000 0x100>;
++			interrupts = <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>;
++			status = "disabled";
++		};
++
++		pixelvalve1: pixelvalve@7c411000 {
++			compatible = "brcm,bcm2712-pixelvalve1";
++			reg = <0x7c411000 0x100>;
++			interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
++			status = "disabled";
++		};
++
++		mop: mop@7c500000 {
++			compatible = "brcm,bcm2712-mop";
++			reg = <0x7c500000 0x28>;
++			interrupt-parent = <&disp_intr>;
++			interrupts = <1>;
++			status = "disabled";
++		};
++
++		moplet: moplet@7c501000 {
++			compatible = "brcm,bcm2712-moplet";
++			reg = <0x7c501000 0x20>;
++			interrupt-parent = <&disp_intr>;
++			interrupts = <0>;
++			status = "disabled";
++		};
++
++		disp_intr: interrupt-controller@7c502000 {
++			compatible = "brcm,bcm2711-l2-intc", "brcm,l2-intc";
++			reg = <0x7c502000 0x30>;
++			interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++			status = "disabled";
++		};
++
++		dvp: clock@7c700000 {
++			compatible = "brcm,brcm2711-dvp";
++			reg = <0x7c700000 0x10>;
++			clocks = <&clk_108MHz>;
++			#clock-cells = <1>;
++			#reset-cells = <1>;
++		};
++
++		/*
++		 * This node is the provider for the enable-method for
++		 * bringing up secondary cores.
++		 */
++		local_intc: local_intc@7cd00000 {
++			compatible = "brcm,bcm2836-l1-intc";
++			reg = <0x7cd00000 0x100>;
++		};
++
++		uart0: serial@7d001000 {
++			compatible = "arm,pl011", "arm,primecell";
++			reg = <0x7d001000 0x200>;
++			interrupts = <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_uart>,
++				 <&clk_vpu>;
++			clock-names = "uartclk", "apb_pclk";
++			arm,primecell-periphid = <0x00241011>;
++			status = "disabled";
++		};
++
++		uart2: serial@7d001400 {
++			compatible = "arm,pl011", "arm,primecell";
++			reg = <0x7d001400 0x200>;
++			interrupts = <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_uart>,
++				 <&clk_vpu>;
++			clock-names = "uartclk", "apb_pclk";
++			arm,primecell-periphid = <0x00241011>;
++			status = "disabled";
++		};
++
++		uart3: serial@7d001600 {
++			compatible = "arm,pl011", "arm,primecell";
++			reg = <0x7d001600 0x200>;
++			interrupts = <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_uart>,
++				 <&clk_vpu>;
++			clock-names = "uartclk", "apb_pclk";
++			arm,primecell-periphid = <0x00241011>;
++			status = "disabled";
++		};
++
++		uart4: serial@7d001800 {
++			compatible = "arm,pl011", "arm,primecell";
++			reg = <0x7d001800 0x200>;
++			interrupts = <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_uart>,
++				 <&clk_vpu>;
++			clock-names = "uartclk", "apb_pclk";
++			arm,primecell-periphid = <0x00241011>;
++			status = "disabled";
++		};
++
++		uart5: serial@7d001a00 {
++			compatible = "arm,pl011", "arm,primecell";
++			reg = <0x7d001a00 0x200>;
++			interrupts = <GIC_SPI 121 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_uart>,
++				 <&clk_vpu>;
++			clock-names = "uartclk", "apb_pclk";
++			arm,primecell-periphid = <0x00241011>;
++			status = "disabled";
++		};
++
++		sdhost: mmc@7d002000 {
++			compatible = "brcm,bcm2835-sdhost";
++			reg = <0x7d002000 0x100>;
++			//interrupts = <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			status = "disabled";
++		};
++
++		i2s: i2s@7d003000 {
++			compatible = "brcm,bcm2835-i2s";
++			reg = <0x7d003000 0x24>;
++			//clocks = <&cprman BCM2835_CLOCK_PCM>;
++			status = "disabled";
++		};
++
++		spi0: spi@7d004000 {
++			compatible = "brcm,bcm2835-spi";
++			reg = <0x7d004000 0x200>;
++			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			num-cs = <1>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		spi3: spi@7d004600 {
++			compatible = "brcm,bcm2835-spi";
++			reg = <0x7d004600 0x0200>;
++			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		spi4: spi@7d004800 {
++			compatible = "brcm,bcm2835-spi";
++			reg = <0x7d004800 0x0200>;
++			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		spi5: spi@7d004a00 {
++			compatible = "brcm,bcm2835-spi";
++			reg = <0x7d004a00 0x0200>;
++			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		spi6: spi@7d004c00 {
++			compatible = "brcm,bcm2835-spi";
++			reg = <0x7d004c00 0x0200>;
++			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		i2c0: i2c@7d005000 {
++			compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
++			reg = <0x7d005000 0x20>;
++			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		i2c3: i2c@7d005600 {
++			compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
++			reg = <0x7d005600 0x20>;
++			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		i2c4: i2c@7d005800 {
++			compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
++			reg = <0x7d005800 0x20>;
++			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		i2c5: i2c@7d005a00 {
++			compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
++			reg = <0x7d005a00 0x20>;
++			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		i2c6: i2c@7d005c00 {
++			compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
++			reg = <0x7d005c00 0x20>;
++			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		i2c8: i2c@7d005e00 {
++			compatible = "brcm,bcm2711-i2c", "brcm,bcm2835-i2c";
++			reg = <0x7d005e00 0x20>;
++			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_vpu>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		pwm0: pwm@7d00c000 {
++			compatible = "brcm,bcm2835-pwm";
++			reg = <0x7d00c000 0x28>;
++			assigned-clock-rates = <10000000>;
++			#pwm-cells = <2>;
++			status = "disabled";
++		};
++
++		pwm1: pwm@7d00c800 {
++			compatible = "brcm,bcm2835-pwm";
++			reg = <0x7d00c800 0x28>;
++			assigned-clock-rates = <10000000>;
++			#pwm-cells = <2>;
++			status = "disabled";
++		};
++
++		pm: watchdog@7d200000 {
++			compatible = "brcm,bcm2712-pm";
++			reg = <0x7d200000 0x308>;
++			reg-names = "pm";
++			#power-domain-cells = <1>;
++			#reset-cells = <1>;
++			//clocks = <&cprman BCM2835_CLOCK_V3D>,
++			//	 <&cprman BCM2835_CLOCK_PERI_IMAGE>,
++			//	 <&cprman BCM2835_CLOCK_H264>,
++			//	 <&cprman BCM2835_CLOCK_ISP>;
++			clock-names = "v3d", "peri_image", "h264", "isp";
++			system-power-controller;
++		};
++
++		cprman: cprman@7d202000 {
++			compatible = "brcm,bcm2711-cprman";
++			reg = <0x7d202000 0x2000>;
++			#clock-cells = <1>;
++
++			/* CPRMAN derives almost everything from the
++			 * platform's oscillator.  However, the DSI
++			 * pixel clocks come from the DSI analog PHY.
++			 */
++			clocks = <&clk_osc>;
++			status = "disabled";
++		};
++
++		random: rng@7d208000 {
++			compatible = "brcm,bcm2711-rng200";
++			reg = <0x7d208000 0x28>;
++			status = "okay";
++		};
++
++		cpu_l2_irq: intc@7d503000 {
++			compatible = "brcm,l2-intc";
++			reg = <0x7d503000 0x18>;
++			interrupts = <GIC_SPI 238 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
++		pinctrl: pinctrl@7d504100 {
++			compatible = "brcm,bcm2712-pinctrl";
++			reg = <0x7d504100 0x30>;
++
++			uarta_24_pins: uarta_24_pins {
++				pin_rts {
++					function = "uart0";
++					pins = "gpio24";
++					bias-disable;
++				};
++				pin_cts {
++					function = "uart0";
++					pins = "gpio25";
++					bias-pull-up;
++				};
++				pin_txd {
++					function = "uart0";
++					pins = "gpio26";
++					bias-disable;
++				};
++				pin_rxd {
++					function = "uart0";
++					pins = "gpio27";
++					bias-pull-up;
++				};
++			};
++
++			sdio2_30_pins: sdio2_30_pins {
++				pin_clk {
++					function = "sd2";
++					pins = "gpio30";
++					bias-disable;
++				};
++				pin_cmd {
++					function = "sd2";
++					pins = "gpio31";
++					bias-pull-up;
++				};
++				pins_dat {
++					function = "sd2";
++					pins = "gpio32", "gpio33", "gpio34", "gpio35";
++					bias-pull-up;
++				};
++			};
++		};
++
++		ddc0: i2c@7d508200 {
++			compatible = "brcm,brcmstb-i2c";
++			reg = <0x7d508200 0x58>;
++			interrupt-parent = <&bsc_irq>;
++			interrupts = <1>;
++			clock-frequency = <200000>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		ddc1: i2c@7d508280 {
++			compatible = "brcm,brcmstb-i2c";
++			reg = <0x7d508280 0x58>;
++			interrupt-parent = <&bsc_irq>;
++			interrupts = <2>;
++			clock-frequency = <200000>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		bscd: i2c@7d508300 {
++			compatible = "brcm,brcmstb-i2c";
++			reg = <0x7d508300 0x58>;
++			interrupt-parent = <&bsc_irq>;
++			interrupts = <0>;
++			clock-frequency = <200000>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		bsc_irq: intc@7d508380 {
++			compatible = "brcm,bcm7271-l2-intc";
++			reg = <0x7d508380 0x10>;
++			interrupts = <GIC_SPI 242 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
++		main_irq: intc@7d508400 {
++			compatible = "brcm,bcm7271-l2-intc";
++			reg = <0x7d508400 0x10>;
++			interrupts = <GIC_SPI 244 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
++		gio: gpio@7d508500 {
++			compatible = "brcm,brcmstb-gpio";
++			reg = <0x7d508500 0x40>;
++			interrupt-parent = <&main_irq>;
++			interrupts = <0>;
++			gpio-controller;
++			#gpio-cells = <2>;
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			brcm,gpio-bank-widths = <32 22>;
++			brcm,gpio-direct;
++		};
++
++		uarta: serial@7d50c000 {
++			compatible = "brcm,bcm7271-uart";
++			reg = <0x7d50c000 0x20>;
++			reg-names = "uart";
++			reg-shift = <2>;
++			reg-io-width = <4>;
++			interrupts = <GIC_SPI 276 IRQ_TYPE_LEVEL_HIGH>;
++			skip-init;
++			status = "disabled";
++		};
++
++		uartb: serial@7d50d000 {
++			compatible = "brcm,bcm7271-uart";
++			reg = <0x7d50d000 0x20>;
++			reg-names = "uart";
++			reg-shift = <2>;
++			reg-io-width = <4>;
++			interrupts = <GIC_SPI 277 IRQ_TYPE_LEVEL_HIGH>;
++			skip-init;
++			status = "disabled";
++		};
++
++		uartc: serial@7d50e000 {
++			compatible = "brcm,bcm7271-uart";
++			reg = <0x7d50e000 0x20>;
++			reg-names = "uart";
++			reg-shift = <2>;
++			reg-io-width = <4>;
++			interrupts = <GIC_SPI 278 IRQ_TYPE_LEVEL_HIGH>;
++			skip-init;
++			status = "disabled";
++		};
++
++		aon_intr: interrupt-controller@7d510600 {
++			compatible = "brcm,bcm2711-l2-intc", "brcm,l2-intc";
++			reg = <0x7d510600 0x30>;
++			interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++			status = "disabled";
++		};
++
++		pinctrl_aon: pinctrl@7d510700 {
++			compatible = "brcm,bcm2712-aon-pinctrl";
++			reg = <0x7d510700 0x20>;
++
++			i2c3_m4_agpio0_pins: i2c3_m4_agpio0_pins {
++				function = "vc_i2c3";
++				pins = "aon_gpio0", "aon_gpio1";
++				bias-pull-up;
++			};
++
++			bsc_m1_agpio13_pins: bsc_m1_agpio13_pins {
++				function = "bsc_m1";
++				pins = "aon_gpio13", "aon_gpio14";
++				bias-pull-up;
++			};
++
++			bsc_pmu_sgpio4_pins: bsc_pmu_sgpio4_pins {
++				function = "avs_pmu_bsc";
++				pins = "aon_sgpio4", "aon_sgpio5";
++			};
++
++			bsc_m2_sgpio4_pins: bsc_m2_sgpio4_pins {
++				function = "bsc_m2";
++				pins = "aon_sgpio4", "aon_sgpio5";
++			};
++
++			pwm_aon_agpio1_pins: pwm_aon_agpio1_pins {
++				function = "aon_pwm";
++				pins = "aon_gpio1", "aon_gpio2";
++			};
++
++			pwm_aon_agpio4_pins: pwm_aon_agpio4_pins {
++				function = "vc_pwm0";
++				pins = "aon_gpio4", "aon_gpio5";
++			};
++
++			pwm_aon_agpio7_pins: pwm_aon_agpio7_pins {
++				function = "aon_pwm";
++				pins = "aon_gpio7", "aon_gpio9";
++			};
++		};
++
++		intc@7d517000 {
++			compatible = "brcm,bcm7271-l2-intc";
++			reg = <0x7d517000 0x10>;
++			interrupts = <GIC_SPI 247 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++			status = "disabled";
++		};
++
++		bscc: i2c@7d517a00 {
++			compatible = "brcm,brcmstb-i2c";
++			reg = <0x7d517a00 0x58>;
++			interrupt-parent = <&bsc_aon_irq>;
++			interrupts = <0>;
++			clock-frequency = <200000>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
++		pwm_aon: pwm@7d517a80 {
++			compatible = "brcm,bcm7038-pwm";
++			reg = <0x7d517a80 0x28>;
++			#pwm-cells = <2>;
++			clocks = <&clk_27MHz>;
++		};
++
++		main_aon_irq: intc@7d517ac0 {
++			compatible = "brcm,bcm7271-l2-intc";
++			reg = <0x7d517ac0 0x10>;
++			interrupts = <GIC_SPI 245 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
++		bsc_aon_irq: intc@7d517b00 {
++			compatible = "brcm,bcm7271-l2-intc";
++			reg = <0x7d517b00 0x10>;
++			interrupts = <GIC_SPI 243 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
++		gio_aon: gpio@7d517c00 {
++			compatible = "brcm,brcmstb-gpio";
++			reg = <0x7d517c00 0x40>;
++			interrupt-parent = <&main_aon_irq>;
++			interrupts = <0>;
++			gpio-controller;
++			#gpio-cells = <2>;
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			brcm,gpio-bank-widths = <17 6>;
++			brcm,gpio-direct;
++		};
++
++		avs_monitor: avs-monitor@7d542000 {
++			compatible = "brcm,bcm2711-avs-monitor",
++				     "syscon", "simple-mfd";
++			reg = <0x7d542000 0xf00>;
++			status = "okay";
++
++			thermal: thermal {
++				compatible = "brcm,bcm2711-thermal";
++				#thermal-sensor-cells = <0>;
++			};
++		};
++
++		bsc_pmu: i2c@7d544000 {
++			compatible = "brcm,brcmstb-i2c";
++			reg = <0x7d544000 0x58>;
++			interrupt-parent = <&bsc_aon_irq>;
++			interrupts = <1>;
++			clock-frequency = <200000>;
++			status = "disabled";
++		};
++
++		hdmi0: hdmi@7ef00700 {
++			compatible = "brcm,bcm2712-hdmi0";
++			reg = <0x7c701400 0x300>,
++			      <0x7c701000 0x200>,
++			      <0x7c701d00 0x300>,
++			      <0x7c702000 0x80>,
++			      <0x7c703800 0x200>,
++			      <0x7c704000 0x800>,
++			      <0x7c700100 0x80>,
++			      <0x7d510800 0x100>,
++			      <0x7c720000 0x100>;
++			reg-names = "hdmi",
++				    "dvp",
++				    "phy",
++				    "rm",
++				    "packet",
++				    "metadata",
++				    "csc",
++				    "cec",
++				    "hd";
++			resets = <&dvp 1>;
++			interrupt-parent = <&aon_intr>;
++			interrupts = <1>, <2>, <3>,
++				     <7>, <8>;
++			interrupt-names = "cec-tx", "cec-rx", "cec-low",
++					  "hpd-connected", "hpd-removed";
++			ddc = <&ddc0>;
++			dmas = <&dma32 10>;
++			dma-names = "audio-rx";
++			status = "disabled";
++		};
++
++		hdmi1: hdmi@7ef05700 {
++			compatible = "brcm,bcm2712-hdmi1";
++			reg = <0x7c706400 0x300>,
++			      <0x7c706000 0x200>,
++			      <0x7c706d00 0x300>,
++			      <0x7c707000 0x80>,
++			      <0x7c708800 0x200>,
++			      <0x7c709000 0x800>,
++			      <0x7c700180 0x80>,
++			      <0x7d511000 0x100>,
++			      <0x7c720000 0x100>;
++			reg-names = "hdmi",
++				    "dvp",
++				    "phy",
++				    "rm",
++				    "packet",
++				    "metadata",
++				    "csc",
++				    "cec",
++				    "hd";
++			ddc = <&ddc1>;
++			resets = <&dvp 2>;
++			interrupt-parent = <&aon_intr>;
++			interrupts = <11>, <12>, <13>,
++				     <14>, <15>;
++			interrupt-names = "cec-tx", "cec-rx", "cec-low",
++					  "hpd-connected", "hpd-removed";
++			dmas = <&dma32 17>;
++			dma-names = "audio-rx";
++			status = "disabled";
++		};
++
++		sound: sound {
++		};
++	};
++
++	arm-pmu {
++		compatible = "arm,cortex-a76-pmu";
++		interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>,
++			<GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>,
++			<GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>,
++			<GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
++		interrupt-affinity = <&cpu0>, <&cpu1>, <&cpu2>, <&cpu3>;
++	};
++
++	timer {
++		compatible = "arm,armv8-timer";
++		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(4) |
++					  IRQ_TYPE_LEVEL_LOW)>,
++			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(4) |
++					  IRQ_TYPE_LEVEL_LOW)>,
++			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(4) |
++					  IRQ_TYPE_LEVEL_LOW)>,
++			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(4) |
++					  IRQ_TYPE_LEVEL_LOW)>;
++		/* This only applies to the ARMv7 stub */
++		arm,cpu-registers-not-fw-configured;
++	};
++
++	cpus: cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		enable-method = "brcm,bcm2836-smp"; // for ARM 32-bit
++
++		cpu0: cpu@0 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a76";
++			reg = <0x000>;
++			enable-method = "psci";
++			next-level-cache = <&l2_cache>;
++		};
++
++		cpu1: cpu@1 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a76";
++			reg = <0x100>;
++			enable-method = "psci";
++			next-level-cache = <&l2_cache>;
++		};
++
++		cpu2: cpu@2 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a76";
++			reg = <0x200>;
++			enable-method = "psci";
++			next-level-cache = <&l2_cache>;
++		};
++
++		cpu3: cpu@3 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a76";
++			reg = <0x300>;
++			enable-method = "psci";
++			next-level-cache = <&l2_cache>;
++		};
++
++		l2_cache: l2-cache {
++			compatible = "cache";
++			next-level-cache = <&l3_cache>;
++		};
++
++		l3_cache: l3-cache {
++			compatible = "cache";
++		};
++	};
++
++	psci {
++		method = "smc";
++		compatible = "arm,psci-1.0", "arm,psci-0.2", "arm,psci";
++		cpu_on = <0xc4000003>;
++		cpu_suspend = <0xc4000001>;
++		cpu_off = <0x84000002>;
++	};
++
++	axi: axi {
++		compatible = "simple-bus";
++		#address-cells = <2>;
++		#size-cells = <2>;
++
++		ranges = <0x00 0x00000000  0x00 0x00000000  0x10 0x00000000>,
++			 <0x10 0x00000000  0x10 0x00000000  0x01 0x00000000>,
++			 <0x14 0x00000000  0x14 0x00000000  0x04 0x00000000>,
++			 <0x18 0x00000000  0x18 0x00000000  0x04 0x00000000>,
++			 <0x1c 0x00000000  0x1c 0x00000000  0x04 0x00000000>;
++
++		dma-ranges = <0x00 0x00000000  0x00 0x00000000  0x10 0x00000000>,
++			     <0x10 0x00000000  0x10 0x00000000  0x01 0x00000000>,
++			     <0x14 0x00000000  0x14 0x00000000  0x04 0x00000000>,
++			     <0x18 0x00000000  0x18 0x00000000  0x04 0x00000000>,
++			     <0x1c 0x00000000  0x1c 0x00000000  0x04 0x00000000>;
++
++		vc4: gpu {
++			compatible = "brcm,bcm2712-vc6";
++		};
++
++		iommu2: iommu@5100 {
++			/* IOMMU2 for PISP-BE, HEVC; and (unused) H264 accelerators */
++			compatible = "brcm,bcm2712-iommu";
++			reg = <0x10 0x5100  0x0 0x80>;
++			cache = <&iommuc>;
++			#iommu-cells = <0>;
++		};
++
++		iommu4: iommu@5200 {
++			/* IOMMU4 for HVS, MPL/TXP; and (unused) Unicam, PISP-FE, MiniBVN */
++			compatible = "brcm,bcm2712-iommu";
++			reg = <0x10 0x5200  0x0 0x80>;
++			cache = <&iommuc>;
++			#iommu-cells = <0>;
++			#interconnect-cells = <0>;
++		};
++
++		iommu5: iommu@5280 {
++			/* IOMMU5 for PCIe2 (RP1); and (unused) BSTM */
++			compatible = "brcm,bcm2712-iommu";
++			reg = <0x10 0x5280  0x0 0x80>;
++			cache = <&iommuc>;
++			#iommu-cells = <0>;
++			dma-iova-offset = <0x10 0x00000000>; // HACK for RP1 masters over PCIe
++		};
++
++		iommuc: iommuc@5b00 {
++			compatible = "brcm,bcm2712-iommuc";
++			reg = <0x10 0x5b00  0x0 0x80>;
++		};
++
++		dma32: dma@10000 {
++			compatible = "brcm,bcm2712-dma";
++			reg = <0x10 0x00010000 0 0x600>;
++			interrupts = <GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 82 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 83 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 84 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 85 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "dma0",
++					  "dma1",
++					  "dma2",
++					  "dma3",
++					  "dma4",
++					  "dma5";
++			#dma-cells = <1>;
++			brcm,dma-channel-mask = <0x0035>;
++		};
++
++		dma40: dma@10600 {
++			compatible = "brcm,bcm2712-dma";
++			reg = <0x10 0x00010600 0 0x600>;
++			interrupts =
++				<GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>, /* dma4 6 */
++				<GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>, /* dma4 7 */
++				<GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>, /* dma4 8 */
++				<GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>, /* dma4 9 */
++				<GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>, /* dma4 10 */
++				<GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>; /* dma4 11 */
++			interrupt-names = "dma6",
++					  "dma7",
++					  "dma8",
++					  "dma9",
++					  "dma10",
++					  "dma11";
++			#dma-cells = <1>;
++			brcm,dma-channel-mask = <0x0fc0>;
++		};
++
++		// Single-lane Gen3 PCIe
++		// Outbound window at 0x14_000000-0x17_ffffff
++		pcie0: pcie@100000 {
++			compatible = "brcm,bcm2712-pcie";
++			reg = <0x10 0x00100000  0x0 0x9310>;
++			device_type = "pci";
++			max-link-speed = <2>;
++			#address-cells = <3>;
++			#interrupt-cells = <1>;
++			#size-cells = <2>;
++			/*
++			 * Unused interrupts:
++			 * 208: AER
++			 * 215: NMI
++			 * 216: PME
++			 */
++			interrupt-parent = <&gicv2>;
++			interrupts = <GIC_SPI 213 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 214 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "pcie", "msi";
++			interrupt-map-mask = <0x0 0x0 0x0 0x7>;
++			interrupt-map = <0 0 0 1 &gicv2 GIC_SPI 209
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 2 &gicv2 GIC_SPI 210
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 3 &gicv2 GIC_SPI 211
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 4 &gicv2 GIC_SPI 212
++							IRQ_TYPE_LEVEL_HIGH>;
++			resets = <&bcm_reset 5>, <&bcm_reset 42>, <&pcie_rescal>;
++			reset-names = "swinit", "bridge", "rescal";
++			msi-controller;
++			msi-parent = <&pcie0>;
++
++			ranges = <0x02000000 0x00 0x00000000
++				  0x17 0x00000000
++				  0x0 0xfffffffc>,
++				 <0x43000000 0x04 0x00000000
++				  0x14 0x00000000
++				  0x3 0x00000000>;
++
++			dma-ranges = <0x43000000 0x10 0x00000000
++				      0x00 0x00000000
++				      0x10 0x00000000>;
++
++			status = "disabled";
++		};
++
++		// Single-lane Gen3 PCIe
++		// Outbound window at 0x18_000000-0x1b_ffffff
++		pcie1: pcie@110000 {
++			compatible = "brcm,bcm2712-pcie";
++			reg = <0x10 0x00110000  0x0 0x9310>;
++			device_type = "pci";
++			max-link-speed = <2>;
++			#address-cells = <3>;
++			#interrupt-cells = <1>;
++			#size-cells = <2>;
++			/*
++			 * Unused interrupts:
++			 * 218: AER
++			 * 225: NMI
++			 * 226: PME
++			 */
++			interrupt-parent = <&gicv2>;
++			interrupts = <GIC_SPI 223 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 224 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "pcie", "msi";
++			interrupt-map-mask = <0x0 0x0 0x0 0x7>;
++			interrupt-map = <0 0 0 1 &gicv2 GIC_SPI 219
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 2 &gicv2 GIC_SPI 220
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 3 &gicv2 GIC_SPI 221
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 4 &gicv2 GIC_SPI 222
++							IRQ_TYPE_LEVEL_HIGH>;
++			resets = <&bcm_reset 7>, <&bcm_reset 43>, <&pcie_rescal>;
++			reset-names = "swinit", "bridge", "rescal";
++			msi-controller;
++			msi-parent = <&mip1>;
++
++			ranges = <0x02000000 0x00 0x00000000
++				  0x1b 0x00000000
++				  0x00 0xfffffffc>,
++				 <0x43000000 0x04 0x00000000
++				  0x18 0x00000000
++				  0x03 0x00000000>;
++
++			dma-ranges = <0x03000000 0x10 0x00000000
++				      0x00 0x00000000
++				      0x10 0x00000000>;
++
++			brcm,enable-l1ss;
++			status = "disabled";
++		};
++
++		pcie_rescal: reset-controller@119500 {
++			compatible = "brcm,bcm7216-pcie-sata-rescal";
++			reg = <0x10 0x00119500  0x0 0x10>;
++			#reset-cells = <0>;
++		};
++
++		// Quad-lane Gen3 PCIe
++		// Outbound window at 0x1c_000000-0x1f_ffffff
++		pcie2: pcie@120000 {
++			compatible = "brcm,bcm2712-pcie";
++			reg = <0x10 0x00120000  0x0 0x9310>;
++			device_type = "pci";
++			max-link-speed = <2>;
++			#address-cells = <3>;
++			#interrupt-cells = <1>;
++			#size-cells = <2>;
++			/*
++			 * Unused interrupts:
++			 * 228: AER
++			 * 235: NMI
++			 * 236: PME
++			 */
++			interrupt-parent = <&gicv2>;
++			interrupts = <GIC_SPI 233 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 234 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "pcie", "msi";
++			interrupt-map-mask = <0x0 0x0 0x0 0x7>;
++			interrupt-map = <0 0 0 1 &gicv2 GIC_SPI 229
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 2 &gicv2 GIC_SPI 230
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 3 &gicv2 GIC_SPI 231
++							IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 4 &gicv2 GIC_SPI 232
++							IRQ_TYPE_LEVEL_HIGH>;
++			resets = <&bcm_reset 32>, <&bcm_reset 44>, <&pcie_rescal>;
++			reset-names = "swinit", "bridge", "rescal";
++			msi-controller;
++			msi-parent = <&mip0>;
++
++			// ~4GB, 32-bit, not-prefetchable at PCIe 00_00000000
++			ranges = <0x02000000 0x00 0x00000000
++				  0x1f 0x00000000
++				  0x0 0xfffffffc>,
++			// 12GB, 64-bit, prefetchable at PCIe 04_00000000
++				 <0x43000000 0x04 0x00000000
++				  0x1c 0x00000000
++				  0x03 0x00000000>;
++
++			// 64GB system RAM space at PCIe 10_00000000
++			dma-ranges = <0x02000000 0x00 0x00000000
++				      0x1f 0x00000000
++				      0x00 0x00400000>,
++				     <0x43000000 0x10 0x00000000
++				      0x00 0x00000000
++				      0x10 0x00000000>;
++
++			brcm,enable-l1ss;
++			status = "disabled";
++		};
++
++		mip0: msi-controller@130000 {
++			compatible = "brcm,bcm2712-mip-intc";
++			reg = <0x10 0x00130000  0x0 0xc0>;
++			msi-controller;
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			brcm,msi-base-spi = <128>;
++			brcm,msi-num-spis = <64>;
++			brcm,msi-offset = <0>;
++			brcm,msi-pci-addr = <0xff 0xfffff000>;
++		};
++
++		mip1: msi-controller@131000 {
++			compatible = "brcm,bcm2712-mip-intc";
++			reg = <0x10 0x00131000  0x0 0xc0>;
++			msi-controller;
++			interrupt-controller;
++			#interrupt-cells = <2>;
++			brcm,msi-base-spi = <247>;
++			/* Actually 20 total, but the others are
++			 * both sparse and non-consecutive */
++			brcm,msi-num-spis = <8>;
++			brcm,msi-offset = <8>;
++			brcm,msi-pci-addr = <0xff 0xffffe000>;
++		};
++
++		genet: ethernet@1300000 {
++			compatible = "brcm,bcm2711-genet-v5";
++			reg = <0x10 0x01300000  0x0 0x20010>;
++			#address-cells = <0x1>;
++			#size-cells = <0x0>;
++			interrupts = <GIC_SPI 265 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 266 IRQ_TYPE_LEVEL_HIGH>;
++			status = "disabled";
++			phy-mode = "rgmii";
++			fixed-link = <0x0 0x1 0x3e8 0x0 0x0>;
++	                  phy-speed = <0x3e8>;
++	                  phy-id = <0x101>;
++	                  phy-type = <0x6>;
++	                  local-mac-address = [ 00 10 18 d8 45 de ];
++	                  device_type = "network";
++
++			genet_mdio: mdio@e14 {
++				compatible = "brcm,genet-mdio-v5";
++				reg = <0xe14 0x8>;
++				#address-cells = <0x1>;
++				#size-cells = <0x0>;
++			};
++		};
++
++		syscon_piarbctl: syscon@400018 {
++			compatible = "brcm,syscon-piarbctl", "syscon", "simple-mfd";
++			reg = <0x10 0x00400018  0x0 0x18>;
++		};
++
++		usb: usb@480000 {
++			compatible = "brcm,bcm2835-usb";
++			reg = <0x10 0x00480000 0x0 0x10000>;
++			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			clocks = <&clk_usb>;
++			clock-names = "otg";
++			phys = <&usbphy>;
++			phy-names = "usb2-phy";
++			status = "disabled";
++		};
++
++		rpivid: codec@800000 {
++			compatible = "raspberrypi,rpivid-vid-decoder";
++			reg = <0x10 0x00800000  0x0 0x10000>, /* HEVC */
++			      <0x10 0x00840000  0x0 0x1000>;  /* INTC */
++			reg-names = "hevc",
++				    "intc";
++
++			interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
++
++			clocks = <&firmware_clocks 11>;
++			clock-names = "hevc";
++			status = "disabled";
++			iommus = <&iommu2>;
++		};
++
++		sdio1: mmc@fff000 {
++			compatible = "brcm,bcm2712-sdhci";
++			reg = <0x10 0x00fff000  0x0 0x260>,
++			      <0x10 0x00fff400  0x0 0x200>,
++			      <0x10 0x015040b0  0x0 0x4>,  // Bus isolation control
++			      <0x10 0x015200f0  0x0 0x24>; // LCPLL control misc0-8
++			reg-names = "host", "cfg", "busisol", "lcpll";
++			interrupts = <GIC_SPI 273 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_emmc2>;
++			sdhci-caps-mask = <0x0000C000 0x0>;
++			sdhci-caps = <0x0 0x0>;
++			supports-cqe;
++			mmc-ddr-3_3v;
++		};
++
++		sdio2: mmc@1100000 {
++			compatible = "brcm,bcm2712-sdhci";
++			reg = <0x10 0x01100000  0x0 0x260>,
++			      <0x10 0x01100400  0x0 0x200>;
++			reg-names = "host", "cfg";
++			interrupts = <GIC_SPI 274 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_emmc2>;
++			sdhci-caps-mask = <0x0000C000 0x0>;
++			sdhci-caps = <0x0 0x0>;
++			supports-cqe;
++			mmc-ddr-3_3v;
++			status = "disabled";
++		};
++
++		sdio0: mmc@1108000 {
++			compatible = "brcm,bcm2711-emmc2";
++			reg = <0x10 0x01108000  0x0 0x100>;
++			interrupts = <GIC_SPI 272 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&clk_emmc2>;
++			mmc-ddr-3_3v;
++			status = "disabled";
++		};
++
++		bcm_reset: reset-controller@1504318 {
++			compatible = "brcm,brcmstb-reset";
++			reg = <0x10 0x01504318  0x0 0x30>;
++			#reset-cells = <1>;
++		};
++
++		v3d: v3d@2000000 {
++			compatible = "brcm,2712-v3d";
++			reg = <0x10 0x02000000  0x0 0x4000>,
++			      <0x10 0x02008000  0x0 0x6000>;
++			reg-names = "hub", "core0";
++
++			power-domains = <&pm BCM2835_POWER_DOMAIN_GRAFX_V3D>;
++			resets = <&pm BCM2835_RESET_V3D>;
++			clocks = <&firmware_clocks 5>;
++			clocks-names = "v3d";
++			interrupts = <GIC_SPI 250 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 249 IRQ_TYPE_LEVEL_HIGH>;
++			status = "disabled";
++		};
++
++		gicv2: interrupt-controller@7fff9000 {
++			interrupt-controller;
++			#interrupt-cells = <3>;
++			compatible = "arm,gic-400";
++			reg =	<0x10 0x7fff9000  0x0 0x1000>,
++				<0x10 0x7fffa000  0x0 0x2000>,
++				<0x10 0x7fffc000  0x0 0x2000>,
++				<0x10 0x7fffe000  0x0 0x2000>;
++			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(4) |
++						 IRQ_TYPE_LEVEL_HIGH)>;
++		};
++
++		pisp_be: pisp_be@880000  {
++			compatible = "raspberrypi,pispbe";
++			reg = <0x10 0x00880000  0x0 0x4000>;
++			interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&firmware_clocks 7>;
++			clocks-names = "isp_be";
++			status = "okay";
++			iommus = <&iommu2>;
++		};
++	};
++
++	clocks {
++		/* The oscillator is the root of the clock tree. */
++		clk_osc: clk-osc {
++			compatible = "fixed-clock";
++			#clock-cells = <0>;
++			clock-output-names = "osc";
++			clock-frequency = <54000000>;
++		};
++
++		clk_usb: clk-usb {
++			compatible = "fixed-clock";
++			#clock-cells = <0>;
++			clock-output-names = "otg";
++			clock-frequency = <480000000>;
++		};
++
++		clk_vpu: clk_vpu {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <750000000>;
++			clock-output-names = "vpu-clock";
++		};
++
++		clk_uart: clk_uart {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <9216000>;
++			clock-output-names = "uart-clock";
++		};
++
++		clk_emmc2: clk_emmc2 {
++			#clock-cells = <0>;
++			compatible = "fixed-clock";
++			clock-frequency = <54000000>;
++			clock-output-names = "emmc2-clock";
++		};
++	};
++
++	usbphy: phy {
++		compatible = "usb-nop-xceiv";
++		#phy-cells = <0>;
++	};
++};
+diff --git a/configs/rpi_5_defconfig b/configs/rpi_5_defconfig
+new file mode 100644
+index 0000000000..21d0e207d7
+--- /dev/null
++++ b/configs/rpi_5_defconfig
+@@ -0,0 +1,58 @@
++CONFIG_ARM=y
++CONFIG_POSITION_INDEPENDENT=y
++CONFIG_ARCH_BCM283X=y
++CONFIG_TARGET_RPI_ARM64=y
++CONFIG_ENV_SIZE=0x4000
++CONFIG_DEFAULT_DEVICE_TREE="bcm2712-rpi-5-b"
++CONFIG_OF_LIBFDT_OVERLAY=y
++CONFIG_DM_RESET=y
++CONFIG_SYS_LOAD_ADDR=0x1000000
++CONFIG_PCI=y
++CONFIG_BOOTSTD_DEFAULTS=y
++CONFIG_OF_BOARD_SETUP=y
++CONFIG_FDT_SIMPLEFB=y
++CONFIG_USE_PREBOOT=y
++CONFIG_PREBOOT="pci enum; usb start;"
++CONFIG_SYS_PBSIZE=1049
++# CONFIG_DISPLAY_CPUINFO is not set
++# CONFIG_DISPLAY_BOARDINFO is not set
++CONFIG_MISC_INIT_R=y
++CONFIG_SYS_PROMPT="U-Boot> "
++CONFIG_CMD_GPIO=y
++CONFIG_CMD_MMC=y
++CONFIG_CMD_PCI=y
++CONFIG_CMD_USB=y
++CONFIG_CMD_FS_UUID=y
++CONFIG_ENV_FAT_DEVICE_AND_PART="0:1"
++CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG=y
++CONFIG_TFTP_TSIZE=y
++CONFIG_DM_DMA=y
++CONFIG_BCM2835_GPIO=y
++CONFIG_MMC_SDHCI=y
++CONFIG_MMC_SDHCI_SDMA=y
++CONFIG_MMC_SDHCI_BCM2835=y
++CONFIG_MMC_SDHCI_BCMSTB=y
++CONFIG_BCMGENET=y
++CONFIG_PCI_BRCMSTB=y
++CONFIG_PINCTRL=y
++# CONFIG_PINCTRL_GENERIC is not set
++CONFIG_DM_RNG=y
++CONFIG_RNG_IPROC200=y
++# CONFIG_REQUIRE_SERIAL_CONSOLE is not set
++CONFIG_SYSINFO=y
++CONFIG_SYSINFO_SMBIOS=y
++CONFIG_USB=y
++CONFIG_USB_XHCI_HCD=y
++CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_DWC2=y
++CONFIG_USB_KEYBOARD=y
++CONFIG_USB_HOST_ETHER=y
++CONFIG_USB_ETHER_LAN78XX=y
++CONFIG_USB_ETHER_SMSC95XX=y
++CONFIG_VIDEO=y
++# CONFIG_VIDEO_BPP8 is not set
++# CONFIG_VIDEO_BPP16 is not set
++CONFIG_SYS_WHITE_ON_BLACK=y
++CONFIG_VIDEO_BCM2835=y
++CONFIG_CONSOLE_SCROLL_LINES=10
++CONFIG_PHYS_TO_BUS=y
+diff --git a/include/dt-bindings/clock/rp1.h b/include/dt-bindings/clock/rp1.h
+new file mode 100644
+index 0000000000..1305bf79ae
+--- /dev/null
++++ b/include/dt-bindings/clock/rp1.h
+@@ -0,0 +1,52 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2021 Raspberry Pi Ltd.
++ */
++
++#define RP1_PLL_SYS_CORE		0
++#define RP1_PLL_AUDIO_CORE		1
++#define RP1_PLL_VIDEO_CORE		2
++
++#define RP1_PLL_SYS			3
++#define RP1_PLL_AUDIO			4
++#define RP1_PLL_VIDEO			5
++
++#define RP1_PLL_SYS_PRI_PH		6
++#define RP1_PLL_SYS_SEC_PH		7
++#define RP1_PLL_AUDIO_PRI_PH		8
++
++#define RP1_PLL_SYS_SEC			9
++#define RP1_PLL_AUDIO_SEC		10
++#define RP1_PLL_VIDEO_SEC		11
++
++#define RP1_CLK_SYS			12
++#define RP1_CLK_SLOW_SYS		13
++#define RP1_CLK_DMA			14
++#define RP1_CLK_UART			15
++#define RP1_CLK_ETH			16
++#define RP1_CLK_PWM0			17
++#define RP1_CLK_PWM1			18
++#define RP1_CLK_AUDIO_IN		19
++#define RP1_CLK_AUDIO_OUT		20
++#define RP1_CLK_I2S			21
++#define RP1_CLK_MIPI0_CFG		22
++#define RP1_CLK_MIPI1_CFG		23
++#define RP1_CLK_PCIE_AUX		24
++#define RP1_CLK_USBH0_MICROFRAME	25
++#define RP1_CLK_USBH1_MICROFRAME	26
++#define RP1_CLK_USBH0_SUSPEND		27
++#define RP1_CLK_USBH1_SUSPEND		28
++#define RP1_CLK_ETH_TSU			29
++#define RP1_CLK_ADC			30
++#define RP1_CLK_SDIO_TIMER		31
++#define RP1_CLK_SDIO_ALT_SRC		32
++#define RP1_CLK_GP0			33
++#define RP1_CLK_GP1			34
++#define RP1_CLK_GP2			35
++#define RP1_CLK_GP3			36
++#define RP1_CLK_GP4			37
++#define RP1_CLK_GP5			38
++#define RP1_CLK_VEC			39
++#define RP1_CLK_DPI			40
++#define RP1_CLK_MIPI0_DPI		41
++#define RP1_CLK_MIPI1_DPI		42
+diff --git a/include/dt-bindings/mfd/rp1.h b/include/dt-bindings/mfd/rp1.h
+new file mode 100644
+index 0000000000..80bbfd61b2
+--- /dev/null
++++ b/include/dt-bindings/mfd/rp1.h
+@@ -0,0 +1,235 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * This header provides constants for the PY MFD.
++ */
++
++#ifndef _RP1_H
++#define _RP1_H
++
++/* Address map */
++#define RP1_SYSINFO_BASE 0x000000
++#define RP1_TBMAN_BASE 0x004000
++#define RP1_SYSCFG_BASE 0x008000
++#define RP1_OTP_BASE 0x00c000
++#define RP1_POWER_BASE 0x010000
++#define RP1_RESETS_BASE 0x014000
++#define RP1_CLOCKS_BANK_DEFAULT_BASE 0x018000
++#define RP1_CLOCKS_BANK_VIDEO_BASE 0x01c000
++#define RP1_PLL_SYS_BASE 0x020000
++#define RP1_PLL_AUDIO_BASE 0x024000
++#define RP1_PLL_VIDEO_BASE 0x028000
++#define RP1_UART0_BASE 0x030000
++#define RP1_UART1_BASE 0x034000
++#define RP1_UART2_BASE 0x038000
++#define RP1_UART3_BASE 0x03c000
++#define RP1_UART4_BASE 0x040000
++#define RP1_UART5_BASE 0x044000
++#define RP1_SPI8_BASE 0x04c000
++#define RP1_SPI0_BASE 0x050000
++#define RP1_SPI1_BASE 0x054000
++#define RP1_SPI2_BASE 0x058000
++#define RP1_SPI3_BASE 0x05c000
++#define RP1_SPI4_BASE 0x060000
++#define RP1_SPI5_BASE 0x064000
++#define RP1_SPI6_BASE 0x068000
++#define RP1_SPI7_BASE 0x06c000
++#define RP1_I2C0_BASE 0x070000
++#define RP1_I2C1_BASE 0x074000
++#define RP1_I2C2_BASE 0x078000
++#define RP1_I2C3_BASE 0x07c000
++#define RP1_I2C4_BASE 0x080000
++#define RP1_I2C5_BASE 0x084000
++#define RP1_I2C6_BASE 0x088000
++#define RP1_AUDIO_IN_BASE 0x090000
++#define RP1_AUDIO_OUT_BASE 0x094000
++#define RP1_PWM0_BASE 0x098000
++#define RP1_PWM1_BASE 0x09c000
++#define RP1_I2S0_BASE 0x0a0000
++#define RP1_I2S1_BASE 0x0a4000
++#define RP1_I2S2_BASE 0x0a8000
++#define RP1_TIMER_BASE 0x0ac000
++#define RP1_SDIO0_APBS_BASE 0x0b0000
++#define RP1_SDIO1_APBS_BASE 0x0b4000
++#define RP1_BUSFABRIC_MONITOR_BASE 0x0c0000
++#define RP1_BUSFABRIC_AXISHIM_BASE 0x0c4000
++#define RP1_ADC_BASE 0x0c8000
++#define RP1_IO_BANK0_BASE 0x0d0000
++#define RP1_IO_BANK1_BASE 0x0d4000
++#define RP1_IO_BANK2_BASE 0x0d8000
++#define RP1_SYS_RIO0_BASE 0x0e0000
++#define RP1_SYS_RIO1_BASE 0x0e4000
++#define RP1_SYS_RIO2_BASE 0x0e8000
++#define RP1_PADS_BANK0_BASE 0x0f0000
++#define RP1_PADS_BANK1_BASE 0x0f4000
++#define RP1_PADS_BANK2_BASE 0x0f8000
++#define RP1_PADS_ETH_BASE 0x0fc000
++#define RP1_ETH_IP_BASE 0x100000
++#define RP1_ETH_CFG_BASE 0x104000
++#define RP1_PCIE_APBS_BASE 0x108000
++#define RP1_MIPI0_CSIDMA_BASE 0x110000
++#define RP1_MIPI0_CSIHOST_BASE 0x114000
++#define RP1_MIPI0_DSIDMA_BASE 0x118000
++#define RP1_MIPI0_DSIHOST_BASE 0x11c000
++#define RP1_MIPI0_MIPICFG_BASE 0x120000
++#define RP1_MIPI0_ISP_BASE 0x124000
++#define RP1_MIPI1_CSIDMA_BASE 0x128000
++#define RP1_MIPI1_CSIHOST_BASE 0x12c000
++#define RP1_MIPI1_DSIDMA_BASE 0x130000
++#define RP1_MIPI1_DSIHOST_BASE 0x134000
++#define RP1_MIPI1_MIPICFG_BASE 0x138000
++#define RP1_MIPI1_ISP_BASE 0x13c000
++#define RP1_VIDEO_OUT_CFG_BASE 0x140000
++#define RP1_VIDEO_OUT_VEC_BASE 0x144000
++#define RP1_VIDEO_OUT_DPI_BASE 0x148000
++#define RP1_XOSC_BASE 0x150000
++#define RP1_WATCHDOG_BASE 0x154000
++#define RP1_DMA_TICK_BASE 0x158000
++#define RP1_SDIO_CLOCKS_BASE 0x15c000
++#define RP1_USBHOST0_APBS_BASE 0x160000
++#define RP1_USBHOST1_APBS_BASE 0x164000
++#define RP1_ROSC0_BASE 0x168000
++#define RP1_ROSC1_BASE 0x16c000
++#define RP1_VBUSCTRL_BASE 0x170000
++#define RP1_TICKS_BASE 0x174000
++#define RP1_PIO_APBS_BASE 0x178000
++#define RP1_SDIO0_AHBLS_BASE 0x180000
++#define RP1_SDIO1_AHBLS_BASE 0x184000
++#define RP1_DMA_BASE 0x188000
++#define RP1_RAM_BASE 0x1c0000
++#define RP1_RAM_SIZE 0x020000
++#define RP1_USBHOST0_AXIS_BASE 0x200000
++#define RP1_USBHOST1_AXIS_BASE 0x300000
++#define RP1_EXAC_BASE 0x400000
++
++/* Interrupts */
++
++#define RP1_INT_IO_BANK0 0
++#define RP1_INT_IO_BANK1 1
++#define RP1_INT_IO_BANK2 2
++#define RP1_INT_AUDIO_IN 3
++#define RP1_INT_AUDIO_OUT 4
++#define RP1_INT_PWM0 5
++#define RP1_INT_ETH 6
++#define RP1_INT_I2C0 7
++#define RP1_INT_I2C1 8
++#define RP1_INT_I2C2 9
++#define RP1_INT_I2C3 10
++#define RP1_INT_I2C4 11
++#define RP1_INT_I2C5 12
++#define RP1_INT_I2C6 13
++#define RP1_INT_I2S0 14
++#define RP1_INT_I2S1 15
++#define RP1_INT_I2S2 16
++#define RP1_INT_SDIO0 17
++#define RP1_INT_SDIO1 18
++#define RP1_INT_SPI0 19
++#define RP1_INT_SPI1 20
++#define RP1_INT_SPI2 21
++#define RP1_INT_SPI3 22
++#define RP1_INT_SPI4 23
++#define RP1_INT_SPI5 24
++#define RP1_INT_UART0 25
++#define RP1_INT_TIMER_0 26
++#define RP1_INT_TIMER_1 27
++#define RP1_INT_TIMER_2 28
++#define RP1_INT_TIMER_3 29
++#define RP1_INT_USBHOST0 30
++#define RP1_INT_USBHOST0_0 31
++#define RP1_INT_USBHOST0_1 32
++#define RP1_INT_USBHOST0_2 33
++#define RP1_INT_USBHOST0_3 34
++#define RP1_INT_USBHOST1 35
++#define RP1_INT_USBHOST1_0 36
++#define RP1_INT_USBHOST1_1 37
++#define RP1_INT_USBHOST1_2 38
++#define RP1_INT_USBHOST1_3 39
++#define RP1_INT_DMA 40
++#define RP1_INT_PWM1 41
++#define RP1_INT_UART1 42
++#define RP1_INT_UART2 43
++#define RP1_INT_UART3 44
++#define RP1_INT_UART4 45
++#define RP1_INT_UART5 46
++#define RP1_INT_MIPI0 47
++#define RP1_INT_MIPI1 48
++#define RP1_INT_VIDEO_OUT 49
++#define RP1_INT_PIO_0 50
++#define RP1_INT_PIO_1 51
++#define RP1_INT_ADC_FIFO 52
++#define RP1_INT_PCIE_OUT 53
++#define RP1_INT_SPI6 54
++#define RP1_INT_SPI7 55
++#define RP1_INT_SPI8 56
++#define RP1_INT_SYSCFG 58
++#define RP1_INT_CLOCKS_DEFAULT 59
++#define RP1_INT_VBUSCTRL 60
++#define RP1_INT_PROC_MISC 57
++#define RP1_INT_END 61
++
++/* DMA peripherals (for pacing) */
++#define RP1_DMA_I2C0_RX 0x0
++#define RP1_DMA_I2C0_TX 0x1
++#define RP1_DMA_I2C1_RX 0x2
++#define RP1_DMA_I2C1_TX 0x3
++#define RP1_DMA_I2C2_RX 0x4
++#define RP1_DMA_I2C2_TX 0x5
++#define RP1_DMA_I2C3_RX 0x6
++#define RP1_DMA_I2C3_TX 0x7
++#define RP1_DMA_I2C4_RX 0x8
++#define RP1_DMA_I2C4_TX 0x9
++#define RP1_DMA_I2C5_RX 0xa
++#define RP1_DMA_I2C5_TX 0xb
++#define RP1_DMA_SPI0_RX 0xc
++#define RP1_DMA_SPI0_TX 0xd
++#define RP1_DMA_SPI1_RX 0xe
++#define RP1_DMA_SPI1_TX 0xf
++#define RP1_DMA_SPI2_RX 0x10
++#define RP1_DMA_SPI2_TX 0x11
++#define RP1_DMA_SPI3_RX 0x12
++#define RP1_DMA_SPI3_TX 0x13
++#define RP1_DMA_SPI4_RX 0x14
++#define RP1_DMA_SPI4_TX 0x15
++#define RP1_DMA_SPI5_RX 0x16
++#define RP1_DMA_SPI5_TX 0x17
++#define RP1_DMA_PWM0 0x18
++#define RP1_DMA_UART0_RX 0x19
++#define RP1_DMA_UART0_TX 0x1a
++#define RP1_DMA_AUDIO_IN_CH0 0x1b
++#define RP1_DMA_AUDIO_IN_CH1 0x1c
++#define RP1_DMA_AUDIO_OUT 0x1d
++#define RP1_DMA_PWM1 0x1e
++#define RP1_DMA_I2S0_RX 0x1f
++#define RP1_DMA_I2S0_TX 0x20
++#define RP1_DMA_I2S1_RX 0x21
++#define RP1_DMA_I2S1_TX 0x22
++#define RP1_DMA_I2S2_RX 0x23
++#define RP1_DMA_I2S2_TX 0x24
++#define RP1_DMA_UART1_RX 0x25
++#define RP1_DMA_UART1_TX 0x26
++#define RP1_DMA_UART2_RX 0x27
++#define RP1_DMA_UART2_TX 0x28
++#define RP1_DMA_UART3_RX 0x29
++#define RP1_DMA_UART3_TX 0x2a
++#define RP1_DMA_UART4_RX 0x2b
++#define RP1_DMA_UART4_TX 0x2c
++#define RP1_DMA_UART5_RX 0x2d
++#define RP1_DMA_UART5_TX 0x2e
++#define RP1_DMA_ADC 0x2f
++#define RP1_DMA_DMA_TICK_TICK0 0x30
++#define RP1_DMA_DMA_TICK_TICK1 0x31
++#define RP1_DMA_SPI6_RX 0x32
++#define RP1_DMA_SPI6_TX 0x33
++#define RP1_DMA_SPI7_RX 0x34
++#define RP1_DMA_SPI7_TX 0x35
++#define RP1_DMA_SPI8_RX 0x36
++#define RP1_DMA_SPI8_TX 0x37
++#define RP1_DMA_PIO_CH0_TX 0x38
++#define RP1_DMA_PIO_CH0_RX 0x39
++#define RP1_DMA_PIO_CH1_TX 0x3a
++#define RP1_DMA_PIO_CH1_RX 0x3b
++#define RP1_DMA_PIO_CH2_TX 0x3c
++#define RP1_DMA_PIO_CH2_RX 0x3d
++#define RP1_DMA_PIO_CH3_TX 0x3e
++#define RP1_DMA_PIO_CH3_RX 0x3f
++
++#endif
+-- 
+2.39.2
+

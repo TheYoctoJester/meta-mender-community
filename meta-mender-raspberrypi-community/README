@@ -1,0 +1,42 @@
+ATTENTION: preliminary state of board support for Raspberry Pi 5
+----------------------------------------------------------------
+
+This README file contains information on the contents of the meta-mender-qemu-community layer.
+
+Please see the corresponding sections below for details.
+
+Dependencies
+============
+
+  URI: https://git.yoctoproject.org/poky
+  branch: kirkstone
+
+  URI: https://git.openembedded.org/meta-openembedded
+  branch: kirkstone
+
+  URI: https://github.com/swiftbot-labs/meta-mender
+  branch: kirkstone
+
+  URI: https://github.com/agherzan/meta-raspberrypi
+  branch: kirkstone
+
+Contributions
+=============
+
+Please the README file in the top level directory.
+
+
+I. Adding the meta-mender-raspberrypi-community layer to your build
+=================================================
+
+Run 'bitbake-layers add-layer meta-mender-raspberrypi-community'
+
+II. Misc
+========
+
+The layer supports building for Raspberry Pi 5. Add the following to your configuration:
+
+UBOOT_MACHINE = "rpi_arm64_config"
+COMPATIBLE_MACHINE:pn-u-boot:raspberrypi5:forcevariable = "(raspberrypi5)"
+PREFERRED_VERSION_u-boot = "2024.04"
+PREFERRED_VERSION_u-boot-tools = "2024.04"

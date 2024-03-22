@@ -1,0 +1,32 @@
+header:
+  version: 11
+  includes:
+  - kas/include/mender-full.yml
+  - kas/include/raspberrypi.yml
+
+repos:
+  meta-raspberrypi:
+    url: https://github.com/agherzan/meta-raspberrypi.git
+    refspec: 9dc6673d41044f1174551120ce63501421dbcd85
+
+  meta-mender:
+    url: https://github.com/swiftbot-labs/meta-mender
+    refspec: c1b825aee19fb278c851c7d6eeba7c79194fb0f4
+    layers:
+      meta-mender-raspberrypi:
+
+  meta-mender-community:
+    layers:
+      meta-mender-raspberrypi-community:
+
+local_conf_header:
+  raspberrypi5: |
+    UBOOT_MACHINE = "rpi_arm64_config"
+    COMPATIBLE_MACHINE:pn-u-boot:raspberrypi5:forcevariable = "(raspberrypi5)"
+    PREFERRED_VERSION_u-boot = "2024.04"
+    PREFERRED_VERSION_u-boot-tools = "2024.04"
+
+  rpm: |
+    PACKAGE_CLASSES = "package_rpm"
+
+machine: raspberrypi5

@@ -1,0 +1,33 @@
+From 88c4c47601446260d4a034b2082d2eeaa502a723 Mon Sep 17 00:00:00 2001
+From: dev-sda1 <james@pyxlwuff.dev>
+Date: Fri, 15 Mar 2024 11:01:39 +0000
+Subject: [PATCH 3/3] dtsi
+
+---
+ arch/arm/dts/bcm283x-u-boot.dtsi | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/dts/bcm283x-u-boot.dtsi b/arch/arm/dts/bcm283x-u-boot.dtsi
+index 8c17c6f6a5..8a13d8f843 100644
+--- a/arch/arm/dts/bcm283x-u-boot.dtsi
++++ b/arch/arm/dts/bcm283x-u-boot.dtsi
+@@ -39,10 +39,10 @@
+ 	bootph-all;
+ };
+ 
+-&uart0_gpio14 {
+-	bootph-all;
+-};
++//&uart0_gpio14 {
++//	bootph-all;
++//};
+ 
+-&uart1_gpio14 {
+-	bootph-all;
+-};
++//&uart1_gpio14 {
++//	bootph-all;
++//};
+-- 
+2.39.2
+

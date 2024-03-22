@@ -95,6 +95,8 @@ jobs:
             experimental: true
           - board: stm32mp15-disco
             experimental: true
+          - board: raspberrypi5
+            experimental: true
 
     runs-on: [self-hosted, linux, x64]
     container:
