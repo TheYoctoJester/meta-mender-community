@@ -4,7 +4,7 @@ header:
 repos:
   meta-yocto:
     url: https://git.yoctoproject.org/git/meta-yocto
-    refspec: mickledore
+    refspec: scarthgap
     layers:
       meta-poky:
 
