@@ -4,13 +4,13 @@ header:
 repos:
   meta-arm:
     url: git://git.yoctoproject.org/meta-arm.git
-    refspec: kirkstone
+    refspec: 260e3adc2bf322f52d81c0642c825088a88bb051
     layers:
       meta-arm:
       meta-arm-toolchain:
   meta-rockchip:
     url: git://git.yoctoproject.org/meta-rockchip.git
-    refspec: 1f5e7b10eef4e4906daee7e7f03211823f832ce7
+    refspec: 1e27f83cc4105739ff354d92bce82c20fae77da1
 
   meta-mender-community:
     layers:
