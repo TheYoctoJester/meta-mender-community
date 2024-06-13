@@ -4,7 +4,7 @@ header:
 repos:
   meta-meson:
     url: https://github.com/superna9999/meta-meson
-    refspec: 2255f691bef0fd23228b777c2043548581917382
+    refspec: 4a83d41dda9fcad026253046b677a1c20582391e
 
   meta-mender-community:
     layers:
