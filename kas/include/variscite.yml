@@ -10,7 +10,7 @@ repos:
       meta-filesystems:
   meta-variscite-bsp:
     url: https://github.com/varigit/meta-variscite-bsp
-    refspec: 9bd972eece1e17cfb928863de8b2ae399a073c54
+    refspec: cb533e805e66ab8251227b9c7d0075242bbb7743
   meta-mender-community:
     layers:
       meta-mender-variscite:
