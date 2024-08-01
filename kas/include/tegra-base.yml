@@ -1,7 +1,10 @@
 header:
-  version: 11
+  version: 14
 
 repos:
+  meta-mender:
+    commit: 872219dfd87113345073160367edc33471795a3b # this one fixes the persistent-id for now!
+  
   meta-tegra:
     url: https://github.com/OE4T/meta-tegra.git
   meta-tegra-community:
@@ -21,6 +24,7 @@ repos:
 
   meta-virtualization:
     url: https://git.yoctoproject.org/meta-virtualization.git
+    commit: 6a80f140e387621f62964209a2e07d3bcfb125ce
 
 distro: tegrademo
 
@@ -30,3 +34,9 @@ local_conf_header:
     # OE4t setup-env.sh style environment, as they modify bblayers.conf
     # and expect additional information on the host.
     INHERIT:remove = "tegra-support-sanity distro_layer_buildinfo" 
+    INHERIT += "tegra-mender-setup"
+    MENDER_FEATURES_ENABLE:append = " mender-growfs-data"
+    MENDER_FEATURES_DISABLE:append = " mender-uboot"
+    IMAGE_FSTYPES:tegra = "tegraflash mender dataimg"
+    IMAGE_FSTYPES:pn-tegra-minimal-initramfs:tegra = "${INITRAMFS_FSTYPES}"
+    IMAGE_FSTYPES:pn-tegra-initrd-flash-initramfs:tegra = "${TEGRA_INITRD_FLASH_INITRAMFS_FSTYPES}"
