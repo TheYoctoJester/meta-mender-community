@@ -50,10 +50,6 @@ jobs:
           vexpress-qemu-flash,
           x86-virtual,
           beaglebone-uboot,
-          olimex-imx8mp-evb,
-          jetson-agx-orin-devkit,
-          jetson-agx-xavier-devkit,
-          jetson-orin-nano-devkit
         ]
         experimental: [false]
         subpath: [.]
@@ -61,14 +57,22 @@ jobs:
           - board: raspberrypi4-64-app-updates
             subpath: demos
             experimental: true
-          - board: imx93-var-som
-            experimental: true
           - board: qemuarm64-client-only
             subpath: demos
             experimental: false
           - board: qemuarm64-bootloader-validation
             subpath: demos
             experimental: false
+          - board: imx93-var-som
+            experimental: true
+          - board: olimex-imx8mp-evb
+            experimental: true
+          - board: jetson-agx-orin-devkit
+            experimental: true
+          - board: jetson-agx-xavier-devkit
+            experimental: true
+          - board: jetson-orin-nano-devkit
+            experimental: true
 
     runs-on: [self-hosted, linux, x64]
     container:
