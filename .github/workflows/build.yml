@@ -20,6 +20,8 @@ jobs:
         run: ./ci/update-repos
         env:
           LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
+      - name: create artifact output directory
+        run: mkdir -p $BUILDDIR/artifacts
 
   build:
     needs: [prepare]
@@ -98,3 +100,6 @@ jobs:
           cp ${{ vars.BUILD_ASSETS_DIR }}/site.conf build/conf/site.conf;
           fi &&
           kas build ../../kas/${{ matrix.subpath }}/${{ matrix.board }}.yml
+      - name: collect artifacts
+        run: cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $BUILDDIR/artifacts/images-${{ matrix.board }}
+      
