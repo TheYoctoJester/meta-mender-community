@@ -25,6 +25,8 @@ jobs:
       - name: define artifact output directory path
         id: artifact_path
         run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_WORKFLOW/$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: display artifact output directory path
+        run: echo "artifact_path: ${{ steps.artifact_path.outputs.artifact_path }}"
       - name: create artifact directory
         run: mkdir -p ${{ steps.artifact_path.outputs.artifact_path }}
 
@@ -108,6 +110,8 @@ jobs:
           kas build ../../kas/${{ matrix.subpath }}/${{ matrix.board }}.yml
       - name: collect artifacts
         env:
-          ARTIFACT_DIR: ${{ needs.prepare.outputs.artifact_dir }}
-        run: cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $ARTIFACT_DIR/images-${{ matrix.board }}
+          ARTIFACT_PATH: ${{ needs.prepare.outputs.artifact_path }}
+        run: >
+          echo "artifact_path: ${{ steps.artifact_path.outputs.artifact_path }}/$ARTIFACT_PATH" && 
+          cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $ARTIFACT_PATH/images-${{ matrix.board }}
       
