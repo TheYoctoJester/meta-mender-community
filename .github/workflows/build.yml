@@ -113,5 +113,8 @@ jobs:
           ARTIFACT_PATH: ${{ needs.prepare.outputs.artifact_path }}
         run: >
           echo "artifact_path: ${{ steps.artifact_path.outputs.artifact_path }}/$ARTIFACT_PATH" && 
-          cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $ARTIFACT_PATH/images-${{ matrix.board }}
+          cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $ARTIFACT_PATH/images-${{ matrix.board }}  &&
+          if [ -f "$BUILDDIR/${{ matrix.board }}/build/tmp/buildstats" ]; then 
+          cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/buildstats $ARTIFACT_PATH/images-${{ matrix.board }};
+          fi
       
