@@ -24,7 +24,7 @@ jobs:
           LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
       - name: define artifact output directory path
         id: artifact_path
-        run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_WORKFLOW/$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+        run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/buildtest/$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
       - name: show artifact output directory path
         run: echo "artifact_path - ${{ steps.artifact_path.outputs.artifact_path }}"
       - name: create artifact directory
