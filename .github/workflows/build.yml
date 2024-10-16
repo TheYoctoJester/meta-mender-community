@@ -112,9 +112,14 @@ jobs:
         env:
           ARTIFACT_PATH: ${{ needs.prepare.outputs.artifact_path }}
         run: >
-          echo "artifact_path: ${{ steps.artifact_path.outputs.artifact_path }}/$ARTIFACT_PATH" && 
+          tree cp -fR $BUILDDIR/${{ matrix.board }} &&
+          echo "artifact_path: ${{ steps.artifact_path.outputs.artifact_path }} - $ARTIFACT_PATH" && 
+          mkdir -p $ARTIFACT_PATH/images-${{ matrix.board }}/conf &&
+          cp -fR $BUILDDIR/${{ matrix.board }}/build/conf/local.conf $ARTIFACT_PATH/images-${{ matrix.board }}/conf &&
+          cp -fR $BUILDDIR/${{ matrix.board }}/build/conf/bblayers.conf $ARTIFACT_PATH/images-${{ matrix.board }}/conf &&
           cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $ARTIFACT_PATH/images-${{ matrix.board }}  &&
           if [ -f "$BUILDDIR/${{ matrix.board }}/build/tmp/buildstats" ]; then 
           cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/buildstats $ARTIFACT_PATH/images-${{ matrix.board }};
-          fi
+          fi &&
+          tree $ARTIFACT_PATH
       
