@@ -1,16 +1,16 @@
 header:
-  version: 11
+  version: 14
 
 repos:
   meta-freescale:
     url: https://github.com/Freescale/meta-freescale.git
-    refspec: 82cbf4e5adac1017adc1e4a2ce056c57b3148ba0
+    commit: c525e0c19bdc46d45f71873b5f286f49abb69418
   meta-freescale-3rdparty:
     url: https://github.com/Freescale/meta-freescale-3rdparty.git
-    refspec: bf12dc09d88a53d7345377de277fbcc20ed87235
+    commit: 9e94b64bdfebcf7bfdf2af6447cec866a4efa814
   meta-freescale-distro:
     url: https://github.com/Freescale/meta-freescale-distro.git
-    refspec: d5bbb487b2816dfc74984a78b67f7361ce404253
+    commit: d5bbb487b2816dfc74984a78b67f7361ce404253
 
   meta-mender-community:
     layers:

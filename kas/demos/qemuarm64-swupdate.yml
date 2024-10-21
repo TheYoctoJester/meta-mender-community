@@ -1,5 +1,5 @@
 header:
-  version: 11
+  version: 14
   includes:
   - kas/include/mender-base.yml
 
@@ -12,7 +12,7 @@ repos:
 
   meta-swupdate:
     url: https://github.com/sbabic/meta-swupdate
-    refspec: kirkstone
+    commit: 6918be849ddf1fed5b7a0173e51c7a136e8d4101
 
   meta-mender:
     layers:

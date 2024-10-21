@@ -1,12 +1,11 @@
 header:
-  version: 11
+  version: 14
   includes:
   - kas/include/mender-full.yml
   - kas/include/nxp.yml
 
 repos:
   meta-openembedded:
-    refspec: a8055484f2829e8dfd03d5c8520b2c611aa7ebd2
     layers:
       meta-python:
       meta-multimedia:
@@ -14,19 +13,19 @@ repos:
       meta-initramfs:
   meta-qt6:
     url: git://code.qt.io/yocto/meta-qt6
-    refspec: c06b8b3e34f0dccfebb795a279010db1ab68ed2e
+    commit: c06b8b3e34f0dccfebb795a279010db1ab68ed2e
   meta-boot2qt:
     url: git://code.qt.io/yocto/meta-boot2qt
-    refspec: 7ec529584af7375e1a460b5093ccc42d406c6541
+    commit: 7ec529584af7375e1a460b5093ccc42d406c6541
     layers:
       meta-boot2qt:
       meta-boot2qt-distro:
   meta-toradex-bsp-common:
     url: https://git.toradex.com/meta-toradex-bsp-common.git
-    refspec: 1a14c2724ab0cbcf3d01042fed7b60b48c8ab836
+    commit: 1a14c2724ab0cbcf3d01042fed7b60b48c8ab836
   meta-toradex-nxp:
     url: https://git.toradex.com/meta-toradex-nxp.git
-    refspec: 364341c23ea49fb875e84f980b208699311aaf9c
+    commit: 364341c23ea49fb875e84f980b208699311aaf9c
   meta-mender-community:
     layers:
       meta-mender-toradex-nxp:

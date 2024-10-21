@@ -1,11 +1,11 @@
 header:
-  version: 11
+  version: 14
 
 repos:
   # needs a specific version due to versioned overrides, like gstreamer
   openembedded-core:
     url: http://git.openembedded.org/openembedded-core
-    refspec: f7766da462905ec67bf549d46b8017be36cd5b2a
+    commit: f09fca692f96c9c428e89c5ef53fbcb92ac0c9bf
   meta-openembedded:
     layers:
       meta-python:
@@ -18,19 +18,19 @@ repos:
       meta-perl:
   meta-qt5:
     url: https://github.com/meta-qt5/meta-qt5
-    refspec: 5b71df60e523423b9df6793de9387f87a149ac42
+    commit: 644ebf220245bdc06e7696ccc90acc97a0dd2566
   meta-st-openstlinux:
     url: https://github.com/STMicroelectronics/meta-st-openstlinux
-    refspec: cb736b403d0fef2a02390695613b6b4bb13ca1b7
+    commit: 644ebf220245bdc06e7696ccc90acc97a0dd2566
   meta-st-stm32mp:
     url: https://github.com/STMicroelectronics/meta-st-stm32mp
-    refspec: ca501bd7dbe023682903ceedddaacd940b0898f4
+    commit: 2abadb39d040b3c1c452664e33b7b365516b372d
   meta-st-stm32mp-addons:
     url: https://github.com/STMicroelectronics/meta-st-stm32mp-addons
-    refspec: f1a18b73343afd8dd5f9aa7f5b605d139fb9e4a8
+    commit: f1a18b73343afd8dd5f9aa7f5b605d139fb9e4a8
   meta-st-scripts:
     url: https://github.com/STMicroelectronics/meta-st-scripts
-    refspec: bc063e7af04d04aff66401eb73610381bebc49a0
+    commit: 69e10d187debb1d4136af1c454b3dffd994c3de7
     layers:
       bitbake: excluded
 

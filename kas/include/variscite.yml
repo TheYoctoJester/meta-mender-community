@@ -1,5 +1,5 @@
 header:
-  version: 11
+  version: 14
 
 repos:
   meta-openembedded:
@@ -10,7 +10,7 @@ repos:
       meta-filesystems:
   meta-variscite-bsp:
     url: https://github.com/varigit/meta-variscite-bsp
-    refspec: 9bd972eece1e17cfb928863de8b2ae399a073c54
+    commit: 4a0f976941c575fe10241380b3e84e6dc6665dd4
   meta-mender-community:
     layers:
       meta-mender-variscite:
