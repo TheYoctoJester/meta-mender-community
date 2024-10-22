@@ -94,7 +94,7 @@ jobs:
         include:
           - board: apalis-imx6
             experimental: true
-          - board: colibri-imx6ull,
+          - board: colibri-imx6ull
             experimental: true
           - board: stm32mp15-disco
             experimental: true
