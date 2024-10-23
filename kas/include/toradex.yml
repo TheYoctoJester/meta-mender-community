@@ -1,22 +1,8 @@
 header:
-  version: 11
+  version: 14
 
 repos:
-  openembedded-core:
-    refspec: f7766da462905ec67bf549d46b8017be36cd5b2a
-  meta-freescale:
-    refspec: ded147b76123365f2700fd8cab402869eca3219a
-  meta-freescale-3rdparty:
-    refspec: 5977197340c7a7db17fe3e02a4e014ad997565ae
-  meta-freescale-distro:
-    refspec: ecd571288e41a8b6195f226b61be330072e42f81
-  meta-yocto:
-    url: https://git.yoctoproject.org/git/meta-yocto
-    refspec: ca9c465e37b693ab768ee8e21a929d1c18956e98
-    layers:
-      meta-poky:
   meta-openembedded:
-    refspec: a8055484f2829e8dfd03d5c8520b2c611aa7ebd2
     layers:
       meta-python:
       meta-gnome:
@@ -26,19 +12,24 @@ repos:
       meta-filesystems:
   meta-qt5:
     url: https://github.com/meta-qt5/meta-qt5
-    refspec: 5b71df60e523423b9df6793de9387f87a149ac42
+    commit: 644ebf220245bdc06e7696ccc90acc97a0dd2566
   meta-toradex-distro:
     url: https://git.toradex.com/meta-toradex-distro.git
-    refspec: 095032507d6560ff6bb916982732a2190019b97f
+    #branch: kirkstone-6.x.y
+    commit: b63547f3772ea9d0f8f83bc24238005d621966f5
   meta-toradex-bsp-common:
     url: https://git.toradex.com/meta-toradex-bsp-common.git
-    refspec: 1a14c2724ab0cbcf3d01042fed7b60b48c8ab836
+    #branch: kirkstone-6.x.y
+    commit: 95d58eee6e1ba025c3ab84285bd11222889a41a4
   meta-toradex-nxp:
     url: https://git.toradex.com/meta-toradex-nxp.git
-    refspec: 364341c23ea49fb875e84f980b208699311aaf9c
+    #branch: kirkstone-6.x.y
+    commit: 163c71393949f241ce60e3e0e0b474fa3eee1ddc
   meta-toradex-demos:
     url: https://git.toradex.com/meta-toradex-demos.git
-    refspec: 6cbe18653ab705592671001daab88a7c58c81a69
+    #branch: kirkstone-6.x.y
+    commit: ad72d14becf6b54c1c76864eb691a369307672fa
+
   meta-mender-community:
     layers:
       meta-mender-toradex-nxp:

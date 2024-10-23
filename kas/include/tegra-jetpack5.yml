@@ -1,18 +1,21 @@
 header:
-  version: 11
+  version: 14
   includes:
   - kas/include/tegra-base.yml
 
 repos:
   meta-tegra:
-    refspec: 2a808b6afb221974196d2eeab3537140ebb63cc7
+    #branch: kirkstone
+    commit: 67ec5c4c1924eb34745c00ee1b9c48335d3b6964
   meta-tegra-community:
-    refspec: f5a9cf859a1414bc7654fc57c09fb7ee1b116194
+    #branch: kirkstone
+    commit: 298939d20c30ba76f1db6357e47d2b64abdbc9e2
   meta-tegrademo:
-    refspec: kirkstone
+    #branch: kirkstone
+    commit: 98181a0a4e24b961c586a0ed81005543ce9e13fe
 
   meta-virtualization:
-    refspec: b3b3dbc67504e8cd498d6db202ddcf5a9dd26a9d
+    commit: 02a6c00d9370992a54296633de26a13a9a08ca2a
 
   meta-mender-community:
     layers:

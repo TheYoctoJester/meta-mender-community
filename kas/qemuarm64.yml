@@ -1,5 +1,5 @@
 header:
-  version: 11
+  version: 14
   includes:
   - kas/include/mender-full.yml
   - kas/include/qemu.yml
@@ -11,13 +11,12 @@ repos:
 
   meta-openembedded:
     url: https://git.openembedded.org/meta-openembedded
-    refspec: kirkstone
     layers:
       meta-oe:
 
   meta-arm:
     url: https://git.yoctoproject.org/meta-arm
-    refspec: kirkstone
+    commit: bf98ef902e6e7042e46a69fb2df6c68d00de2764
     layers:
       meta-arm:
       meta-arm-toolchain:

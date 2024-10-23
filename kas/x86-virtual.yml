@@ -1,12 +1,12 @@
 header:
-  version: 11
+  version: 14
   includes:
   - kas/include/mender-full.yml
 
 repos:
   meta-intel:
     url: https://git.yoctoproject.org/meta-intel
-    refspec: 1aacdb4ed1e639cc6e19c541b058264eb17eb093
+    commit: 1abc8ef0fc11041e2ff18989dce5b99214ee89ed
 
 local_conf_header:
   x86-virtual: |

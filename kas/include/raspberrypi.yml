@@ -1,10 +1,10 @@
 header:
-  version: 11
+  version: 14
 
 repos:
   meta-raspberrypi:
     url: https://github.com/agherzan/meta-raspberrypi.git
-    refspec: 9dc6673d41044f1174551120ce63501421dbcd85
+    commit: d7544f35756d87834e8b4bf3e3e733c771d380ae
 
   meta-mender:
     layers:
