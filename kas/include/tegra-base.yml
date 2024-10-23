@@ -1,5 +1,5 @@
 header:
-  version: 11
+  version: 14
 
 repos:
   meta-tegra:
@@ -21,7 +21,7 @@ repos:
 
   meta-virtualization:
     url: https://git.yoctoproject.org/meta-virtualization.git
-    commit: 6a80f140e387621f62964209a2e07d3bcfb125ce
+    commit: 6f3c1d8f90947408a6587be222fec575a1ca5195
 
 distro: tegrademo
 

@@ -4,6 +4,6 @@ header:
 repos:
   meta-ti:
     url: https://git.yoctoproject.org/meta-ti
-    commit: e902a647ec3685009f870d6222336bfb6e7af6c3
+    commit: c82f29cae79c6a4fec79c542649cb832e1fb67ab
     layers:
       meta-ti-bsp:

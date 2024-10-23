@@ -8,6 +8,7 @@ repos:
 
   meta-lts-mixins:
     url: https://git.yoctoproject.org/meta-lts-mixins
+    # branch: scathgap/u-boot
     commit: 66ceeebd047d7fdfc8668b300319a76da8ae257d
 
   meta-mender-community:
