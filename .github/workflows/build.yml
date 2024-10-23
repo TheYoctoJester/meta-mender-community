@@ -12,6 +12,8 @@ env:
 jobs:
   prepare:
     runs-on: [self-hosted, linux, x64]
+    outputs:
+      artifact_path: ${{ steps.artifact_path.outputs.artifact_path }}
     steps:
       - name: Clean up
         run: rm -fR $BUILDDIR
@@ -22,6 +24,11 @@ jobs:
           LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
       - name: create artifact output directory
         run: mkdir -p $BUILDDIR/artifacts
+ #     - id: artifact_path
+ #       run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY_OWNER/$GITHUB_REPOSITORY/build/$GITHUB_RUN_NUMBER" >> $GITHUB_OUTPUT
+      - id: artifact_path
+        name: create artifact output directory
+        run: echo "artifact_path=$BUILDDIR/artifacts" >> $GITHUB_OUTPUT
 
   build:
     needs: [prepare]
@@ -101,5 +108,6 @@ jobs:
           fi &&
           kas build ../../kas/${{ matrix.subpath }}/${{ matrix.board }}.yml
       - name: collect artifacts
-        run: cp -fR $BUILDDIR/${{ matrix.board }}/build/tmp/deploy/images $BUILDDIR/artifacts/images-${{ matrix.board }}
-      
+        env:
+          ARTIFACT_PATH: ${{ needs.prepare.outputs.artifact_path }}
+        run: ./ci/collect_artifacts.sh
