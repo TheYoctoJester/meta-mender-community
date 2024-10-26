@@ -1,0 +1,25 @@
+From 9d9aa0cc519605c63e22c2b07b26fe3bb66dc2aa Mon Sep 17 00:00:00 2001
+From: Josef Holzmayr <jester@theyoctojester.info>
+Date: Sat, 26 Oct 2024 19:16:22 +0000
+Subject: [PATCH] chore: mark layer as compatible with kirkstone
+
+Signed-off-by: Josef Holzmayr <jester@theyoctojester.info>
+---
+ conf/layer.conf | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/conf/layer.conf b/conf/layer.conf
+index 426f7f8..5c7c36b 100644
+--- a/conf/layer.conf
++++ b/conf/layer.conf
+@@ -9,6 +9,6 @@ BBFILE_COLLECTIONS += "lts-u-boot-mixin"
+ BBFILE_PATTERN_lts-u-boot-mixin := "^${LAYERDIR}/"
+ BBFILE_PRIORITY_lts-u-boot-mixin = "6"
+ 
+-LAYERSERIES_COMPAT_lts-u-boot-mixin = "scarthgap"
++LAYERSERIES_COMPAT_lts-u-boot-mixin = "kirkstone scarthgap"
+ 
+ LAYERDEPENDS_lts-u-boot-mixin = "core"
+-- 
+2.34.1
+
