@@ -1,0 +1,23 @@
+header:
+  version: 14
+  includes:
+    - kas/include/mender-full.yml
+    - kas/include/tegra-jetpack5.yml
+
+# orin nx16gb in P3509 carrier
+# https://github.com/OE4T/meta-tegra/blob/kirkstone/conf/machine/p3509-a02-p3767-0000.conf
+machine: p3509-a02-p3767-0000
+
+local_conf_header:
+  p3509-a02-p3767-0000: |
+    MENDER_EFI_LOADER = ""
+    EMMC_SIZE = "0"
+    MENDER_STORAGE_TOTAL_SIZE_MB = "16384"
+    MENDER_DATA_PART_SIZE_MB = "100"
+    MENDER_STORAGE_DEVICE_BASE="/dev/nvme0n1p"
+    MENDER_DATA_PART_NUMBER="15"
+    TEGRA_EXTERNAL_DEVICE_SECTORS = "250069680"
+
+  AB-upgrades: |
+    UBOOT_EXTLINUX = "1"
+    USE_REDUNDANT_FLASH_LAYOUT_DEFAULT = "1"
