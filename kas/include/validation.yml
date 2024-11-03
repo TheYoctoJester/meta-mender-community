@@ -1,0 +1,11 @@
+header:
+  version: 14
+
+repos:
+  meta-mender-community:
+    layers:
+      meta-mender-validation:
+
+local_conf_header:
+  validation: |
+    IMAGE_INSTALL:append = " bootloader-validation "

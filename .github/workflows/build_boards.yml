@@ -1,29 +1,30 @@
-name: build boards
+name: build_boards
 
 on:
   workflow_dispatch:
-  schedule:
-    # * is a special character in YAML so you have to quote this string
-    - cron:  '5 2 * * 6'
+  workflow_run:
+    workflows: ["cache layers"]
+    types: 
+    - completed
 
 env:
-  BUILDDIR: gh
+  BUILDDIR: build
 
 jobs:
   prepare:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, builder]
+    outputs:
+      artifact_path: ${{ steps.artifact_path.outputs.artifact_path }}
     steps:
       - name: Clean up
         run: rm -fR $BUILDDIR
       - uses: actions/checkout@v4
-      - name: cache metadata layers
-        run: ./ci/update-repos
-        env:
-          LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
+      - id: artifact_path
+        name: create artifact output directory
+        run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_WORKFLOW/$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT" >> $GITHUB_OUTPUT
 
   build:
     needs: [prepare]
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -49,31 +50,11 @@ jobs:
           vexpress-qemu,
           vexpress-qemu-flash,
           x86-virtual,
-          beaglebone-uboot,
-          olimex-imx8mp-evb,
-          jetson-agx-orin-devkit,
-          jetson-agx-xavier-devkit,
-          jetson-orin-nano-devkit
+          beaglebone-uboot
         ]
-        experimental: [false]
         subpath: [.]
-        include:
-          - board: raspberrypi4-64-app-updates
-            subpath: demos
-            experimental: true
-          - board: imx93-var-som
-            experimental: true
-          - board: qemuarm64-client-only
-            subpath: demos
-            experimental: false
-          - board: qemuarm64-bootloader-validation
-            subpath: demos
-            experimental: false
-          - board: raspberrypi4-64-wifi
-            subpath: demos
-            experimental: false
 
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, builder]
     container:
       # the container image needs to be effectively hardcoded, it seems.
       image: ghcr.io/theyoctojester/devcontainer-base-yoep:main
@@ -97,3 +78,12 @@ jobs:
           cp ${{ vars.BUILD_ASSETS_DIR }}/site.conf build/conf/site.conf;
           fi &&
           kas build ../../kas/${{ matrix.subpath }}/${{ matrix.board }}.yml
+
+  collect:
+    needs: [prepare, build]
+    runs-on: [self-hosted, linux, x64, builder]
+    steps:
+      - name: collect artifacts
+        env:
+          ARTIFACT_PATH: ${{ needs.prepare.outputs.artifact_path }}
+        run: ./ci/collect_artifacts.sh
