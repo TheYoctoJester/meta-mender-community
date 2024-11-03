@@ -3,7 +3,7 @@ name: build validation
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["build boards"]
+    workflows: ["cache layers"]
     types: 
     - completed
 
@@ -17,10 +17,6 @@ jobs:
       - name: Clean up
         run: rm -fR $BUILDDIR
       - uses: actions/checkout@v4
-      - name: cache metadata layers
-        run: ./ci/update-repos
-        env:
-          LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
 
   build:
     needs: [prepare]
