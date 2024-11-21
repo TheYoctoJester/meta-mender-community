@@ -7,13 +7,13 @@ header:
 repos:
   meta-tegra:
     # refers to the scarthgap branch
-    commit: b20cff753ff0ffc24121cb35d2e2d218c2d26cf3
+    commit: 20f761d3e072441ba1ee252e0b30d821395c4d7c
   meta-tegra-community:
     # refers to the scarthgap branch
-    commit: 68f0520b73312ecc6767252de569679c374afc73
+    commit: 1ec483599ebd16967468e71012f653ad2fa045cc
   meta-tegrademo:
     # refers to the scarthgap branch
-    commit: 7d54c8f932b9527255e9b871b662beaafca7fa7b
+    commit: 1457cc45939f72aef097cb5799a7fd9120bab332
 
   meta-mender-community:
     layers:

@@ -3,7 +3,7 @@ header:
 
 repos:
   meta-mender:
-    commit: 872219dfd87113345073160367edc33471795a3b # this one fixes the persistent-id for now!
+    commit: 2f70dbad1441055c299332b7ef33dfe1e4f50c1c # this one fixes the persistent-id for now!
   
   meta-tegra:
     url: https://github.com/OE4T/meta-tegra.git
