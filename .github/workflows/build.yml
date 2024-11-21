@@ -69,6 +69,9 @@ jobs:
           - board: qemuarm64-bootloader-validation
             subpath: demos
             experimental: false
+          - board: raspberrypi4-64-state-scripts
+            subpath: demos
+            experimental: false
 
     runs-on: [self-hosted, linux, x64]
     container:

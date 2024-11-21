@@ -1,0 +1,13 @@
+header:
+  version: 14
+  includes:
+  - kas/raspberrypi4-64.yml
+
+repos:
+  meta-mender-community:
+    layers:
+      kas/demos/meta-mender-demo-state-scripts:
+
+local_conf_header:
+  state-scripts: |
+    IMAGE_INSTALL:append = " state-scripts"

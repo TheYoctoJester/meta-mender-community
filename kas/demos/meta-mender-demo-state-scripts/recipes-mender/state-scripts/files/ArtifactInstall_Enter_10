@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+>&2 echo "Printed from ArtifactInstall_Enter_10"
