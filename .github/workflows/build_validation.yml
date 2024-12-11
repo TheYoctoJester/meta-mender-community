@@ -22,10 +22,10 @@ jobs:
       - uses: actions/checkout@v4
       - id: artifact_path
         name: generate artifact output directory name
-        run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_WORKFLOW/$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT" >> $GITHUB_OUTPUT
+        run: echo "artifact_path=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/$GITHUB_WORKFLOW/$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT" >> $GITHUB_OUTPUT
       - id: artifact_latest
         name: generate latest artifact symlink name
-        run: echo "artifact_latest=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_WORKFLOW/latest" >> $GITHUB_OUTPUT
+        run: echo "artifact_latest=${{ vars.ARTIFACT_OUTPUT_DIR }}/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/$GITHUB_WORKFLOW/latest" >> $GITHUB_OUTPUT
 
   build:
     needs: [prepare]
