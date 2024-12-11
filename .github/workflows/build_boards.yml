@@ -50,7 +50,8 @@ jobs:
           vexpress-qemu,
           vexpress-qemu-flash,
           x86-virtual,
-          beaglebone-uboot
+          beaglebone-uboot,
+          rock-4c-plus,
         ]
         subpath: [.]
 
