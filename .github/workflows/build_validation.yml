@@ -33,6 +33,10 @@ jobs:
       fail-fast: false
       matrix:
         board: [
+          beaglebone,
+          beaglebone-uboot,
+          raspberrypi3,
+          raspberrypi3-64,
           raspberrypi4,
           raspberrypi4-64,
           raspberrypi5,
