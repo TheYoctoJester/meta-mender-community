@@ -29,7 +29,7 @@ for build in $(ls $BUILDDIR); do
 		echo ".. found board $board"
 		mkdir -p $ARTIFACT_PATH/$build
 		echo "$board" > $ARTIFACT_PATH/$build/board.txt
-		cp -fR $BUILDDIR/$build/$IMAGE_SUBPATH $ARTIFACT_PATH/$build
+		cp -fR $BUILDDIR/$build/$IMAGE_SUBPATH/$board $ARTIFACT_PATH/$build/images
 		cp -fR $BUILDDIR/$build/build/conf $ARTIFACT_PATH/$build
 
 		if [ -d "$BUILDDIR/$build/build/tmp/buildstats" ]; then
