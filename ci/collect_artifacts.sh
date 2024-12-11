@@ -27,13 +27,13 @@ for build in $(ls $BUILDDIR); do
 
 	for board in $(ls $BUILDDIR/$build/$IMAGE_SUBPATH); do
 		echo ".. found board $board"
-		mkdir -p $ARTIFACT_PATH/$board
-		cp -fR $BUILDDIR/$build/$IMAGE_SUBPATH $ARTIFACT_PATH/$board
-		cp -fR $BUILDDIR/$build/build/conf $ARTIFACT_PATH/$board
+		mkdir -p $ARTIFACT_PATH/$build
+		echo "$board" > $ARTIFACT_PATH/$build/board.txt
+		cp -fR $BUILDDIR/$build/$IMAGE_SUBPATH $ARTIFACT_PATH/$build
+		cp -fR $BUILDDIR/$build/build/conf $ARTIFACT_PATH/$build
 
 		if [ -d "$BUILDDIR/$build/build/tmp/buildstats" ]; then
-			cp -fR $BUILDDIR/$build/build/tmp/buildstats $ARTIFACT_PATH/$board
+			cp -fR $BUILDDIR/$build/build/tmp/buildstats $ARTIFACT_PATH/$build
 		fi
 	done
 done
-
