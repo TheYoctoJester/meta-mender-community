@@ -4,7 +4,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=86d3f3a95c324c9479bd8986968f4327"
 
 SRC_URI = "git://github.com/theyoctojester/mender-validation.git;protocol=https;branch=main"
-SRCREV = "8e9ed9f22b1a7e193dbb0ce93c27ff2b2d9e804b"
+SRCREV = "45033cda680a586d75bb07e0edec81cb92e5e4c9"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"
