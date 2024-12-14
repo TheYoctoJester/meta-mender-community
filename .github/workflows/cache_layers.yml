@@ -2,9 +2,10 @@ name: cache_layers
 
 on:
   workflow_dispatch:
+  push:
   schedule:
     # * is a special character in YAML so you have to quote this string
-    - cron:  '5 2 * * 6'
+    - cron:  '5 1 * * *'
 
 jobs:
   prepare:
