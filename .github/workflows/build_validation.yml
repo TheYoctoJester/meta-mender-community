@@ -2,10 +2,10 @@ name: build_validation
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["cache layers"]
-    types: 
-    - completed
+  push:
+  schedule:
+    # * is a special character in YAML so you have to quote this string
+    - cron:  '5 2 * * 6'
 
 env:
   BUILDDIR: validation
