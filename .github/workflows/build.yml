@@ -2,9 +2,7 @@ name: build boards
 
 on:
   workflow_dispatch:
-  schedule:
-    # * is a special character in YAML so you have to quote this string
-    - cron:  '5 2 * * 6'
+  push:
 
 env:
   BUILDDIR: gh
