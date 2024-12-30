@@ -24,11 +24,11 @@ FILES:${PN} += "\
 
 do_install() {
     install -d ${D}${prefix}/local/bin
-    install -m 644 ${WORKDIR}/mender-mock-server.py ${D}${prefix}/local/bin/mender-mock-server.py
-    install -m 600 ${WORKDIR}/private.key ${D}${prefix}/local/bin/private.key
+    install -m 644 ${UNPACKDIR}/mender-mock-server.py ${D}${prefix}/local/bin/mender-mock-server.py
+    install -m 600 ${UNPACKDIR}/private.key ${D}${prefix}/local/bin/private.key
 
     install -d ${D}/${systemd_unitdir}/system
-    install -m 644 ${WORKDIR}/mender-mock-server.service ${D}${systemd_unitdir}/system/mender-mock-server.service
+    install -m 644 ${UNPACKDIR}/mender-mock-server.service ${D}${systemd_unitdir}/system/mender-mock-server.service
 
     install -m 755 -d ${D}/data
     mv ${D}${prefix}/local/bin/mender-mock-server.py ${D}/data/mender-mock-server.py
