@@ -1,79 +1,38 @@
-name: build boards
+name: build_experimental
 
 on:
   workflow_dispatch:
-  schedule:
-    # * is a special character in YAML so you have to quote this string
-    - cron:  '5 2 * * 6'
+  workflow_run:
+    workflows: ["cache layers"]
+    types: 
+    - completed
 
 env:
-  BUILDDIR: gh
+  BUILDDIR: experimental
 
 jobs:
   prepare:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, builder]
     steps:
       - name: Clean up
         run: rm -fR $BUILDDIR
       - uses: actions/checkout@v4
-      - name: cache metadata layers
-        run: ./ci/update-repos
-        env:
-          LAYERCACHE: ${{ vars.PERSISTENT_DIR }}/layers
 
   build:
     needs: [prepare]
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         board: [
-          beaglebone,
-          beaglebone-ai64,
-          beagleplay,
-          raspberrypi,
-          raspberrypi-cm,
-          raspberrypi0,
-          raspberrypi0-wifi,
-          raspberrypi2,
-          raspberrypi0-2w,
-          raspberrypi0-2w-64,
-          raspberrypi3,
-          raspberrypi3-64,
-          raspberrypi-cm3,
-          raspberrypi4,
-          raspberrypi4-64,
-          raspberrypi5,
-          qemuarm64,
-          qemux86-64,
-          vexpress-qemu,
-          vexpress-qemu-flash,
-          x86-virtual,
-          beaglebone-uboot,
           olimex-imx8mp-evb,
           jetson-agx-orin-devkit,
           jetson-agx-xavier-devkit,
-          jetson-orin-nano-devkit
+          jetson-orin-nano-devkit,
+          imx93-var-som
         ]
-        experimental: [false]
         subpath: [.]
-        include:
-          - board: raspberrypi4-64-app-updates
-            subpath: demos
-            experimental: true
-          - board: imx93-var-som
-            experimental: true
-          - board: qemuarm64-client-only
-            subpath: demos
-            experimental: false
-          - board: qemuarm64-bootloader-validation
-            subpath: demos
-            experimental: false
-          - board: raspberrypi4-64-wifi
-            subpath: demos
-            experimental: false
 
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, builder]
     container:
       # the container image needs to be effectively hardcoded, it seems.
       image: ghcr.io/theyoctojester/devcontainer-base-yoep:main

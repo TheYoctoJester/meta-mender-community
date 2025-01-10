@@ -1,0 +1,14 @@
+header:
+  version: 14
+
+repos:
+  meta-mender-community:
+    layers:
+      meta-mender-validation:
+
+local_conf_header:
+  validation: |
+    IMAGE_INSTALL:append = " bootloader-validation "
+    MENDER_FEATURES_ENABLE:append = " mender-prepopulate-inactive-partition "
+    MENDER_FEATURES_DISABLE:append = " mender-growfs-data "
+    EXTRA_IMAGE_FEATURES:append = " allow-empty-password empty-root-password allow-root-login "
