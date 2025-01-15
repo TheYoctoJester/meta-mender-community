@@ -5,3 +5,9 @@ header:
   - kas/include/qemu.yml
 
 machine: qemux86-64
+
+local_conf_header:
+  qemu: |
+    MENDER_STORAGE_DEVICE = "/dev/vda"
+    QB_DEFAULT_FSTYPE = "uefiimg"
+    QB_KERNEL_ROOT = "/dev/vda2"
