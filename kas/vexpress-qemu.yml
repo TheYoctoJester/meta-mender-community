@@ -1,11 +1,27 @@
 header:
   version: 14
   includes:
-  - kas/include/mender-base.yml
+  - kas/include/mender-full.yml
   - kas/include/qemu.yml
 
 machine: vexpress-qemu
 
+repos:
+  meta-mender-community:
+    layers:
+      meta-mender-validation:
+
 local_conf_header:
-  mender-efi: |
-    MENDER_EFI_LOADER = ""
+  mender: |
+    MENDER_FEATURES_DISABLE:append = " mender-grub mender-image-uefi"
+    MENDER_FEATURES_ENABLE:append = " mender-uboot mender-image-sd"
+
+  qemu: |
+    QB_SYSTEM_NAME = "qemu-system-arm"
+    QB_MACHINE = "-machine vexpress-a9"
+    QB_DEFAULT_FSTYPE = "sdimg"
+    QB_DEFAULT_KERNEL = "u-boot.elf"
+    QB_ROOTFS_OPT = " -drive file=@ROOTFS@,if=sd,format=raw"
+    QB_NETWORK_DEVICE = "-net nic,macaddr=@MAC@"
+    QB_RNG = ""
+    INHERIT += "sdimg_qemu_sdcard"
