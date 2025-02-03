@@ -4,7 +4,7 @@ header:
 repos:
   meta-raspberrypi:
     url: https://github.com/agherzan/meta-raspberrypi.git
-    commit: 6df7e028a2b7b2d8cab0745dc0ed2eebc3742a17
+    branch: scarthgap
 
   meta-lts-mixins:
     url: https://git.yoctoproject.org/meta-lts-mixins
