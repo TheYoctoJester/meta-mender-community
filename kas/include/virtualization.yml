@@ -1,0 +1,20 @@
+header:
+  version: 14
+
+repos:
+  meta-openembedded:
+    layers:
+      meta-python:
+      meta-networking:
+      meta-filesystems:
+
+  meta-virtualization:
+    url: git://git.yoctoproject.org/meta-virtualization
+    commit: a5449c0c50aa07d02186f548fe6bb6c1ce8823dc
+
+local_conf_header:
+  virtualization: |
+    # with virtualization tools, we just need more storage
+    MENDER_STORAGE_TOTAL_SIZE_MB_DEFAULT = "2048"
+    DISTRO_FEATURES:append = " virtualization"
+
