@@ -1,0 +1,13 @@
+header:
+  version: 14
+  includes:
+  - kas/qemuarm64.yml
+  - kas/include/virtualization.yml
+
+repos:
+  meta-mender-community:
+    layers:
+      kas/demos/meta-mender-readonly-overlayfs:
+
+target:
+  - mender-readonly-overlayfs-image

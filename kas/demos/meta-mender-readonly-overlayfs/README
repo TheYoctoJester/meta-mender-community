@@ -1,0 +1,52 @@
+This README file contains information on the contents of the meta-mender-readonly-overlayfs layer.
+
+Please see the corresponding sections below for details.
+
+Dependencies
+============
+  URI: https://git.yoctoproject.org/poky
+  branch: scarthgap
+
+  URI: https://git.openembedded.org/meta-openembedded
+  branch: scarthgap
+
+  URI: https://github.com/mendersoftware/meta-mender
+  branch: scarthgap
+
+  URI: https://git.yoctoproject.org/meta-virtualization
+  branch: scarthgap
+
+Contributions
+=============
+
+Please the README file in the top level directory.
+
+Table of Contents
+=================
+
+  I. Adding the meta-mender-readonly-overlayfs layer to your build
+ II. Purpose
+III. Included functionality
+
+
+I. Adding the meta-mender-readonly-overlayfs layer to your build
+=================================================
+
+Run 'bitbake-layers add-layer meta-mender-readonly-overlayfs'
+
+II. Purpose
+===========
+
+The layer contains an example setup for a Yocto build which enables
+overlayfs support for docker and places the persistent data on the
+Mender data partition
+
+The example image "mender-readonly-overlayfs-image" does so based on a
+`core-image-full-cmdline` image.
+
+III. Included functionality
+==========================
+
+The `docker-overlayfs` is the main trigger to pull in `docker` and configure
+it for `overlayfs`. The example image only installs this packages and
+enables the `read-only-rootfs` `IMAGE_FEATURE`.
