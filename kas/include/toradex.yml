@@ -1,0 +1,82 @@
+header:
+  version: 14
+
+distro: tdx-xwayland
+target: tdx-reference-minimal-image
+
+repos:
+  meta-mender-community:
+    layers:
+      meta-mender-toradex-nxp:
+
+  meta-openembedded:
+    layers:
+      meta-filesystems:
+      meta-networking:
+      meta-multimedia:
+      meta-python:
+
+  meta-toradex-bsp-common:
+    url: https://git.toradex.com/meta-toradex-bsp-common.git
+    commit: 9ddc957972a0375d283e3871769bce48156d0d29 # scarthgap-7.x.y
+  meta-toradex-distro:
+    url: https://git.toradex.com/meta-toradex-distro.git
+    commit: 0d1bb8968f8748d3d28a7ab5ee19fa74f9a67b72 # scarthgap-7.x.y
+  meta-toradex-demos:
+    url: https://git.toradex.com/meta-toradex-demos.git
+    commit: e1627e0b1f75a102900a6e4726bb0dc284a9d751 # scarthgap-7.x.y
+  meta-toradex-nxp:
+    url: https://git.toradex.com/meta-toradex-nxp.git
+    commit: 5d1dcccf5fa4ae3785e8093f50207aae8ab49315 # scarthgap-7.x.y
+
+  meta-freescale:
+    url: https://github.com/Freescale/meta-freescale
+    commit: 1805a964583d1773310ddbe185a52b0ab3468e6d # scarthgap
+  meta-freescale-distro:
+    url: https://github.com/Freescale/meta-freescale-distro
+    commit: b9d6a5d9931922558046d230c1f5f4ef6ee72345 # scarthgap
+  meta-freescale-3rdparty:
+    url: https://github.com/Freescale/meta-freescale-3rdparty
+    commit: 1dfc65dd2006b51d156be5bcda0e3c72c936ad0a # scarthgap
+
+  meta-qt5:
+    url: https://github.com/meta-qt5/meta-qt5
+    commit: eb828418264a49b8d00035cb3d7b12fcea3be801 # scarthgap
+
+  meta-security:
+    url: https://git.yoctoproject.org/meta-security
+    commit: bc865c5276c2ab4031229916e8d7c20148dfbac3 # scarthgap
+    layers:
+      meta-tpm:
+
+local_conf_header:
+  nxp: |
+    # accept FSL EULA for CI/CD building, make sure to review it
+    ACCEPT_FSL_EULA = "1"
+
+  toradex: |
+    INHERIT += "mender-toradex"
+    INHERIT += "toradex-mirrors"
+    INHERIT += "toradex-sanity"
+    TORADEX_BSP_VERSION = "toradex-bsp-7.1.0"
+    IMAGE_CLASSES += "image_type_mender_tezi"
+    IMAGE_FSTYPES:append = " mender_tezi"
+    IMAGE_FSTYPES:remove = " teziimg"
+    # Append the Mender provided bootargs to tdxargs
+    # the Toradex boot.scr will overwrite bootargs so we stash the context in tdxargs
+    MENDER_UBOOT_POST_SETUP_COMMANDS:append = " ; setenv tdxargs \${tdxargs} \${bootargs}; "
+    # Make sure the Toradex boot script finds the overlays and overlays.txt file in
+    # the /boot directory of the rootfs partition
+    MENDER_UBOOT_POST_SETUP_COMMANDS:append = " ; setenv overlays_file /boot/overlays.txt ; setenv overlays_prefix boot/overlays/ "
+
+  uboot_grub: |
+    # comment out the following two lines to use GRUB instead of u-boot
+    MENDER_FEATURES_ENABLE:append = " mender-uboot mender-image-sd"
+    MENDER_FEATURES_DISABLE:append = " mender-grub mender-image-uefi"
+    # Remove files from boot partition that are loaded by Mender
+    # from the root partitions; this allows the files to be updated OTA
+    IMAGE_BOOT_FILES:remove:mender-uboot = "zImage ${KERNEL_DEVICETREE} overlays.txt overlays/*;overlays/"
+    # Default is Image.gz, which is not compatible with GRUB
+    KERNEL_IMAGETYPE:aarch64:mender-grub = "Image"
+    # boot.scr conflicts when using GRUB
+    IMAGE_BOOT_FILES:remove:mender-grub = "boot.scr-verdin-imx8mm;boot.scr"

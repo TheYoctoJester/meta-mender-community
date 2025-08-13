@@ -1,0 +1,13 @@
+header:
+  version: 14
+  includes:
+  - kas/include/mender-full.yml
+  - kas/include/toradex.yml
+
+machine: verdin-imx8mm
+
+local_conf_header:
+  verdin-imx8mm: |
+    MENDER_BOOT_PART_SIZE_MB = "32"
+    OFFSET_SPL_PAYLOAD = ""
+    KERNEL_DEVICETREE = "freescale/imx8mm-verdin-wifi-dahlia.dtb"

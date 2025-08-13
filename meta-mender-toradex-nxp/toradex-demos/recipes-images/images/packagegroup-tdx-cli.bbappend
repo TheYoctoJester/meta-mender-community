@@ -1,3 +1,3 @@
-RRECOMMENDS:packagegroup-base-tdx-cli:remove_mender-grub = "\
+RRECOMMENDS:packagegroup-base-tdx-cli:remove:mender-grub = "\
     u-boot-fw-utils \
 "

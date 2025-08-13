@@ -26,7 +26,13 @@ jobs:
         board: [
           olimex-imx8mp-evb,
           imx93-var-som,
-          nezha-allwinner-d1
+          nezha-allwinner-d1,
+          apalis-imx6,
+          apalis-imx8,
+          colibri-imx6ull,
+          colibri-imx8x,
+          verdin-imx8mm,
+          verdin-imx8mp
         ]
         subpath: [.]
         include:
