@@ -1,0 +1,10 @@
+# ESP32 USB-to-Serial stable device naming for Mender Orchestrator
+# Adjust KERNELS values to match your USB port topology.
+# Run: udevadm info -a /dev/ttyUSBX | grep KERNELS
+# Common USB-to-Serial chips:
+#   CP2102: idVendor=10c4 idProduct=ea60
+#   CH340:  idVendor=1a86 idProduct=7523
+#   FTDI:   idVendor=0403 idProduct=6001
+
+SUBSYSTEM=="tty", ENV{ID_PATH}=="*usb-0:1.2*", SYMLINK+="esp32-1"
+SUBSYSTEM=="tty", ENV{ID_PATH}=="*usb-0:1.3*", SYMLINK+="esp32-2"

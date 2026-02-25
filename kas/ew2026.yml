@@ -1,0 +1,19 @@
+header:
+  version: 14
+  includes:
+  - kas/reterminal.yml
+  - kas/include/mender-master.yml
+
+repos:
+  meta-openembedded:
+    layers:
+      meta-oe:
+      meta-python:
+
+local_conf_header:
+  orchestrator: |
+    MENDER_DEVICE_TIER = "system"
+    LICENSE_FLAGS_ACCEPTED:append = " commercial_mender-yocto-layer-license"
+    IMAGE_INSTALL:append = " mender-orchestrator mender-orchestrator-support"
+    IMAGE_INSTALL:append = " esp32-update-interface python3-esptool"
+    IMAGE_INSTALL:append = " jq"

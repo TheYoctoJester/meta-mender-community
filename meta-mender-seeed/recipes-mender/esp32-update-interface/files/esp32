@@ -1,0 +1,171 @@
+#!/bin/sh
+#
+# ESP32 update interface for Mender Orchestrator
+#
+# Flashes ESP32 firmware via esptool.py over USB serial.
+# Follows the Mender Orchestrator interface protocol (v1).
+#
+# Arguments:
+#   $1 = STATE
+#   $2 = FILES (working directory with artifact payload)
+#   $3 = COMPONENT_TYPE
+#   $4 = INSTANCE_ID (from interface_args in topology.yaml)
+#
+
+set -e
+
+INTERFACE_NAME=$(basename "$0")
+STATE="$1"
+FILES="$2"
+COMPONENT_TYPE="$3"
+INSTANCE_ID="$4"
+
+DATA_DIR="${FILES}/data"
+HEADER_DIR="${FILES}/header"
+
+DEVICE_CONF="/etc/mender-orchestrator/esp32-devices.conf"
+INSTANCE_BASE_DIR="/data/mender-orchestrator/esp32-instances"
+INSTANCE_DIR="${INSTANCE_BASE_DIR}/${INSTANCE_ID}"
+
+# esptool defaults — adjust per ESP32 variant and partition layout
+ESPTOOL_CHIP="esp32"
+ESPTOOL_BAUD="460800"
+ESPTOOL_FLASH_OFFSET="0x10000"
+
+log() {
+    >&2 echo "##### [${INTERFACE_NAME} ${INSTANCE_ID}] $1"
+}
+
+# Resolve the serial device path for this instance from the config file
+resolve_device() {
+    if [ ! -f "${DEVICE_CONF}" ]; then
+        log "ERROR: Device config not found: ${DEVICE_CONF}"
+        exit 1
+    fi
+    DEVICE_PATH=$(grep "^${INSTANCE_ID}=" "${DEVICE_CONF}" | cut -d= -f2-)
+    if [ -z "${DEVICE_PATH}" ]; then
+        log "ERROR: No device mapping for instance ${INSTANCE_ID} in ${DEVICE_CONF}"
+        exit 1
+    fi
+}
+
+# Ensure the instance state directory exists with initial state
+ensure_instance_dir() {
+    if [ ! -d "${INSTANCE_DIR}" ]; then
+        mkdir -p "${INSTANCE_DIR}"
+        echo "device_type=esp32" > "${INSTANCE_DIR}/Provides"
+        echo "version=unknown" >> "${INSTANCE_DIR}/Provides"
+    fi
+}
+
+case "$STATE" in
+
+    Identity)
+        ensure_instance_dir
+        resolve_device
+        # Try to read the ESP32 chip ID via esptool for a hardware-based identity.
+        # Fall back to a config-derived ID if the device is not reachable.
+        CHIP_ID=""
+        if [ -c "${DEVICE_PATH}" ] || [ -e "${DEVICE_PATH}" ]; then
+            CHIP_ID=$(esptool.py --chip "${ESPTOOL_CHIP}" --port "${DEVICE_PATH}" \
+                --baud "${ESPTOOL_BAUD}" chip_id 2>/dev/null \
+                | grep -i "chip id" | awk '{print $NF}') || true
+        fi
+        if [ -n "${CHIP_ID}" ]; then
+            echo "id=${CHIP_ID}"
+        else
+            echo "id=esp32-${INSTANCE_ID}"
+        fi
+        ;;
+
+    Provides|Inventory)
+        ensure_instance_dir
+        cat "${INSTANCE_DIR}/Provides"
+        ;;
+
+    Download)
+        ensure_instance_dir
+        NEW_VERSION=$(jq -r '.artifact_provides.version' "${HEADER_DIR}/type-info")
+        log "${STATE} [Attempting update to: ${NEW_VERSION}]"
+
+        CURRENT_VERSION=$(grep "^version=" "${INSTANCE_DIR}/Provides" | cut -d= -f2-)
+        echo "${CURRENT_VERSION}" > "${INSTANCE_DIR}/OldVersionRef"
+        echo "${NEW_VERSION}" > "${INSTANCE_DIR}/NewVersionRef"
+
+        # Update Provides to show transition state
+        sed -i '/^version=/d' "${INSTANCE_DIR}/Provides"
+        echo "version=${CURRENT_VERSION}->${NEW_VERSION}" >> "${INSTANCE_DIR}/Provides"
+        ;;
+
+    ArtifactInstall)
+        ensure_instance_dir
+        resolve_device
+        NEW_VERSION=$(jq -r '.artifact_provides.version' "${HEADER_DIR}/type-info")
+        log "${STATE} [Flashing firmware version ${NEW_VERSION} to ${DEVICE_PATH}]"
+
+        if [ ! -c "${DEVICE_PATH}" ] && [ ! -e "${DEVICE_PATH}" ]; then
+            log "ERROR: Device ${DEVICE_PATH} not found"
+            exit 1
+        fi
+
+        # Find the firmware binary in the unpacked artifact data directory
+        FW_BIN=$(find "${DATA_DIR}" -name '*.bin' -type f | head -1)
+        if [ -z "${FW_BIN}" ]; then
+            log "ERROR: No .bin firmware file found in artifact payload"
+            exit 1
+        fi
+        log "Firmware file: ${FW_BIN}"
+
+        esptool.py \
+            --chip "${ESPTOOL_CHIP}" \
+            --port "${DEVICE_PATH}" \
+            --baud "${ESPTOOL_BAUD}" \
+            write_flash "${ESPTOOL_FLASH_OFFSET}" "${FW_BIN}"
+
+        log "Flash complete"
+        ;;
+
+    ArtifactCommit)
+        ensure_instance_dir
+        NEW_VERSION=$(cat "${INSTANCE_DIR}/NewVersionRef")
+        log "${STATE} [Committing version ${NEW_VERSION}]"
+
+        sed -i '/^version=/d' "${INSTANCE_DIR}/Provides"
+        echo "version=${NEW_VERSION}" >> "${INSTANCE_DIR}/Provides"
+        ;;
+
+    ArtifactRollback)
+        ensure_instance_dir
+        OLD_VERSION=$(cat "${INSTANCE_DIR}/OldVersionRef")
+        NEW_VERSION=$(cat "${INSTANCE_DIR}/NewVersionRef")
+        log "${STATE} [Update to ${NEW_VERSION} failed, restoring version to ${OLD_VERSION}]"
+
+        sed -i '/^version=/d' "${INSTANCE_DIR}/Provides"
+        echo "version=${OLD_VERSION}" >> "${INSTANCE_DIR}/Provides"
+        ;;
+
+    ArtifactFailure)
+        ensure_instance_dir
+        NEW_VERSION=$(cat "${INSTANCE_DIR}/NewVersionRef" 2>/dev/null || echo "unknown")
+        log "${STATE} [Update to ${NEW_VERSION} failed]"
+        ;;
+
+    Cleanup)
+        # Nothing to clean up
+        ;;
+
+    NeedsArtifactReboot)
+        echo "No"
+        ;;
+
+    NeedsUnpackedArtifact)
+        echo "Yes"
+        ;;
+
+    SupportsRollback)
+        echo "No"
+        ;;
+
+esac
+
+exit 0

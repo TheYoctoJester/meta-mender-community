@@ -1,0 +1,11 @@
+header:
+  version: 14
+
+repos:
+  meta-mender:
+    url: https://github.com/mendersoftware/meta-mender.git
+    # master
+    commit: ad2d54948625f6a69756659b6b07c9aeaa2cdc46
+    layers:
+      meta-mender-core:
+      meta-mender-commercial:
