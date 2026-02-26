@@ -1,0 +1,48 @@
+/* Mender Demo App — Theme V2: Orange/Warm */
+
+#main-window {
+    background: linear-gradient(180deg, #1A0A00 0%, #2D1B0E 100%);
+}
+
+#main-container {
+    background: transparent;
+}
+
+#content-area {
+    background: transparent;
+    padding: 32px;
+}
+
+#title-label {
+    font-size: 36px;
+    font-weight: bold;
+    color: #FFF0E0;
+    margin-top: 8px;
+}
+
+#version-label {
+    font-size: 22px;
+    font-weight: 300;
+    color: #FF6B00;
+}
+
+#info-label {
+    font-size: 22px;
+    color: #E0D0C0;
+}
+
+#auth-indicator {
+    font-size: 28px;
+}
+
+#footer-bar {
+    background-color: rgba(0, 0, 0, 0.4);
+    border-top: 3px solid #FF6B00;
+    padding: 12px 0px;
+    min-height: 40px;
+}
+
+#footer-label {
+    font-size: 18px;
+    color: #C0A898;
+}

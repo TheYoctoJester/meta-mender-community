@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" width="400" height="100">
+  <!-- Mender logo: shield icon + wordmark -->
+  <g transform="translate(10, 5)">
+    <!-- Shield shape -->
+    <path d="M45 5 L85 20 L85 50 Q85 80 45 95 Q5 80 5 50 L5 20 Z"
+          fill="none" stroke="#00B899" stroke-width="4"/>
+    <!-- Check mark inside shield -->
+    <polyline points="25,50 40,65 65,35"
+              fill="none" stroke="#00B899" stroke-width="5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="110" y="68" font-family="sans-serif" font-size="52" font-weight="bold" fill="#FFFFFF">
+    mender
+  </text>
+</svg>

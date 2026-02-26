@@ -1,0 +1,13 @@
+[Unit]
+Description=Mender Demo Application
+After=weston.service
+Requires=weston.service
+
+[Service]
+Type=simple
+ExecStart=/opt/mender-demo-app/mender-demo-app-launch.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+header:
+  version: 14
+
+repos:
+  meta-mender-community:
+    layers:
+      meta-mender-reterminal-demo:
+  meta-openembedded:
+    layers:
+      meta-python:
+
+local_conf_header:
+  reterminal-demo: |
+    # Wayland / Weston kiosk
+    DISTRO_FEATURES:append = " wayland opengl pam"
+    DISTRO_FEATURES:remove = "x11"
+    PACKAGECONFIG:append:pn-weston = " shell-kiosk"
+
+    # Demo app theme and version (set to "v2" / "2.0" for second image)
+    DEMO_APP_THEME = "v1"
+    DEMO_APP_VERSION = "1.0"
+
+    # Image additions
+    IMAGE_INSTALL:append = " \
+        weston \
+        weston-init \
+        mender-demo-app \
+    "

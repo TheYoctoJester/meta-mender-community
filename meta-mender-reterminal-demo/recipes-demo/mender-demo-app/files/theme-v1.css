@@ -1,0 +1,48 @@
+/* Mender Demo App — Theme V1: Blue/Teal */
+
+#main-window {
+    background: linear-gradient(180deg, #0D1B2A 0%, #1B2838 100%);
+}
+
+#main-container {
+    background: transparent;
+}
+
+#content-area {
+    background: transparent;
+    padding: 32px;
+}
+
+#title-label {
+    font-size: 36px;
+    font-weight: bold;
+    color: #FFFFFF;
+    margin-top: 8px;
+}
+
+#version-label {
+    font-size: 22px;
+    font-weight: 300;
+    color: #00B899;
+}
+
+#info-label {
+    font-size: 22px;
+    color: #D0D8E8;
+}
+
+#auth-indicator {
+    font-size: 28px;
+}
+
+#footer-bar {
+    background-color: rgba(0, 0, 0, 0.4);
+    border-top: 3px solid #00B899;
+    padding: 12px 0px;
+    min-height: 40px;
+}
+
+#footer-label {
+    font-size: 18px;
+    color: #A0B0C0;
+}
