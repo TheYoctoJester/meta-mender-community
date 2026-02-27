@@ -1,29 +1,18 @@
 [Unit]
-Description=Permanently disable all screen blanking for kiosk mode
+Description=Disable kernel and VT screen blanking for kiosk mode
 After=systemd-logind.service
 Before=weston.service
 
 [Service]
-Type=simple
-ExecStartPre=/bin/sh -c '\
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '\
     echo 0 > /sys/module/kernel/parameters/consoleblank; \
     echo -ne "\033[9;0]" > /dev/tty0 2>/dev/null; \
     echo -ne "\033[14;0]" > /dev/tty0 2>/dev/null; \
     echo -ne "\033[9;0]" > /dev/tty1 2>/dev/null; \
     echo -ne "\033[14;0]" > /dev/tty1 2>/dev/null; \
     true'
-ExecStart=/bin/sh -c '\
-    while true; do \
-        echo 0 > /sys/module/kernel/parameters/consoleblank 2>/dev/null; \
-        for bl in /sys/class/backlight/*/bl_power; do \
-            [ -f "$bl" ] && echo 0 > "$bl" 2>/dev/null; \
-        done; \
-        for dpms in /sys/class/drm/card*-DSI-*/dpms; do \
-            [ -f "$dpms" ] && echo On > "$dpms" 2>/dev/null; \
-        done; \
-        sleep 30; \
-    done'
-Restart=always
 
 [Install]
 WantedBy=multi-user.target

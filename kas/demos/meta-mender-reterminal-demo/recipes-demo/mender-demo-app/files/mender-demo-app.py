@@ -99,9 +99,9 @@ def get_ip_address():
     return "No network", ""
 
 
-class MenderDemoApp(Gtk.Window):
-    def __init__(self):
-        super().__init__(title="Mender Demo")
+class MenderDemoWindow(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Mender Demo")
 
         self.load_css()
         self.set_name("main-window")
@@ -177,7 +177,6 @@ class MenderDemoApp(Gtk.Window):
         GLib.timeout_add_seconds(5, self.update_mender_state)
         GLib.timeout_add_seconds(30, self.update_ip_address)
 
-        self.connect("destroy", Gtk.main_quit)
         self.show_all()
 
     def load_css(self):
@@ -237,6 +236,18 @@ class MenderDemoApp(Gtk.Window):
         return True  # keep the timeout active
 
 
+class MenderDemoApp(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="io.mender.DemoApp")
+
+    def do_activate(self):
+        window = MenderDemoWindow(self)
+        window.present()
+        # Inhibit idle/sleep so the compositor never blanks the display.
+        # On Wayland this acquires a zwp_idle_inhibit_v1 inhibitor.
+        self.inhibit(window, Gtk.ApplicationInhibitFlags.IDLE, "kiosk mode")
+
+
 if __name__ == "__main__":
     app = MenderDemoApp()
-    Gtk.main()
+    app.run(None)
