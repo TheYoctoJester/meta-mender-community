@@ -37,4 +37,5 @@ local_conf_header:
         mender-demo-app \
         wificonfig \
         linux-firmware-rpidistro-bcm43455 \
+        kernel-module-brcmfmac \
     "
