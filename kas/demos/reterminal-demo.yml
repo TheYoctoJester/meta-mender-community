@@ -27,7 +27,7 @@ local_conf_header:
     LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.2"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.3"
 
     # Mender-connect default user
     MENDER_CONNECT_USER = "mender"
