@@ -26,6 +26,9 @@ local_conf_header:
     DEMO_WIFI_PASSKEY = "YOUR_PASSKEY"
     LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
 
+    # Mender artifact versioning
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.1"
+
     # Mender server
     MENDER_SERVER_URL = "https://hosted.mender.io"
     MENDER_TENANT_TOKEN = "YOUR_TENANT_TOKEN"
