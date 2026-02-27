@@ -4,7 +4,7 @@ header:
 repos:
   meta-mender-community:
     layers:
-      meta-mender-reterminal-demo:
+      kas/demos/meta-mender-reterminal-demo:
   meta-openembedded:
     layers:
       meta-python:
