@@ -38,5 +38,7 @@ local_conf_header:
         wificonfig \
         linux-firmware-rpidistro-bcm43455 \
         kernel-module-brcmfmac \
+        kernel-module-brcmfmac-wcc \
+        wireless-regdb \
         mender-connect \
     "
