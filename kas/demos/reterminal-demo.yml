@@ -16,7 +16,6 @@ local_conf_header:
     DISTRO_FEATURES:append = " wayland opengl pam"
     DISTRO_FEATURES:remove = "x11"
     PACKAGECONFIG:append:pn-weston = " shell-kiosk"
-    PACKAGECONFIG:remove:pn-weston = "shell-desktop"
 
     # Demo app theme and version (set to "v2" / "2.0" for second image)
     DEMO_APP_THEME = "v1"
@@ -28,7 +27,7 @@ local_conf_header:
     LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.7"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.8"
 
     # Disable kernel console blanking (effective on full flash only)
     CMDLINE:append = " consoleblank=0"
