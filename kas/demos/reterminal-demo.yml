@@ -27,7 +27,10 @@ local_conf_header:
     LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.4"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.5"
+
+    # Disable kernel console blanking (effective on full flash only)
+    CMDLINE:append = " consoleblank=0"
 
     # Mender-connect default user
     MENDER_CONNECT_USER = "mender"
