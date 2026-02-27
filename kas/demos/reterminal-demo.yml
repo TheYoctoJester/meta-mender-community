@@ -5,6 +5,7 @@ repos:
   meta-mender-community:
     layers:
       kas/demos/meta-mender-reterminal-demo:
+      kas/demos/meta-mender-raspberrypi-wifi:
   meta-openembedded:
     layers:
       meta-python:
@@ -20,9 +21,19 @@ local_conf_header:
     DEMO_APP_THEME = "v1"
     DEMO_APP_VERSION = "1.0"
 
+    # WiFi
+    DEMO_WIFI_SSID = "YOUR_SSID"
+    DEMO_WIFI_PASSKEY = "YOUR_PASSKEY"
+    LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
+
+    # Mender server
+    MENDER_SERVER_URL = "https://hosted.mender.io"
+    MENDER_TENANT_TOKEN = "YOUR_TENANT_TOKEN"
+
     # Image additions
     IMAGE_INSTALL:append = " \
         weston \
         weston-init \
         mender-demo-app \
+        wificonfig \
     "
