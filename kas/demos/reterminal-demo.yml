@@ -36,4 +36,5 @@ local_conf_header:
         weston-init \
         mender-demo-app \
         wificonfig \
+        linux-firmware-rpidistro-bcm43455 \
     "
