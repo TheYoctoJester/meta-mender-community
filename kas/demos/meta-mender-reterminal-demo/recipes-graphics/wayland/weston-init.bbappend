@@ -1,5 +1,5 @@
 # For the reTerminal, provide a kiosk-mode weston.ini and anti-blanking service.
-FILESEXTRAPATHS:prepend:seeed-reterminal-mender := "${THISDIR}/reterminal:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
 # Install a systemd service that disables kernel-level console blanking and DPMS
 SRC_URI:append:seeed-reterminal-mender = " file://disable-screen-blanking.service file://kiosk-weston.ini"
