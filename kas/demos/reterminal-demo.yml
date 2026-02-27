@@ -27,7 +27,15 @@ local_conf_header:
     LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.1"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.2"
+
+    # Mender-connect default user
+    MENDER_CONNECT_USER = "mender"
+    MENDER_CONNECT_SHELL = "/bin/sh"
+
+    # Create 'mender' user
+    INHERIT += "extrausers"
+    EXTRA_USERS_PARAMS = "useradd -p '$6$EHVV6FtX0CwkGZOg$uNs1EOu9wui8mLZCcEIjPZehIjGVcOfMzBPvGKZz7.Lb8oi5Rmq/pOhtIcYwPUEfnlh0lDKjVIbLMYClYT64d/' -s /bin/sh mender;"
 
     # Mender server
     MENDER_SERVER_URL = "https://hosted.mender.io"
