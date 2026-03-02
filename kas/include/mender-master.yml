@@ -9,3 +9,4 @@ repos:
     layers:
       meta-mender-core:
       meta-mender-commercial:
+      meta-mender-demo:

@@ -35,7 +35,7 @@ local_conf_header:
     MENDER_RETRY_POLL_INTERVAL_SECONDS = "30"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.21"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.23"
 
     # Quiet boot: suppress kernel messages and text cursor on display
     CMDLINE:append = " consoleblank=0 loglevel=3 vt.global_cursor_default=0"

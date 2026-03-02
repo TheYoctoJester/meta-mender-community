@@ -5,7 +5,6 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/Apache-2.0;md5=89aea4e17d99a7ca
 
 SRC_URI = " \
     file://esp32 \
-    file://topology.yaml \
     file://esp32-devices.conf \
     file://99-esp32-usb.rules \
 "
@@ -16,10 +15,6 @@ do_install() {
     # Interface script
     install -d ${D}${datadir}/mender-orchestrator/interfaces/v1
     install -m 0755 ${WORKDIR}/esp32 ${D}${datadir}/mender-orchestrator/interfaces/v1/esp32
-
-    # Topology
-    install -d ${D}/data/mender-orchestrator
-    install -m 0644 ${WORKDIR}/topology.yaml ${D}/data/mender-orchestrator/topology.yaml
 
     # Device mapping config
     install -d ${D}${sysconfdir}/mender-orchestrator
@@ -32,7 +27,6 @@ do_install() {
 
 FILES:${PN} = " \
     ${datadir}/mender-orchestrator/interfaces/v1/esp32 \
-    /data/mender-orchestrator/topology.yaml \
     ${sysconfdir}/mender-orchestrator/esp32-devices.conf \
     ${sysconfdir}/udev/rules.d/99-esp32-usb.rules \
 "

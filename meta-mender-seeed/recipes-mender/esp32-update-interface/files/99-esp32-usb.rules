@@ -8,5 +8,5 @@
 # After updating, reload rules:
 #   udevadm control --reload-rules && udevadm trigger
 
-SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="CHANGEME_SERIAL_A", SYMLINK+="esp32-1"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="CHANGEME_SERIAL_B", SYMLINK+="esp32-2"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="96f3b4190d28ee119ff40dd8f49e3369", SYMLINK+="esp32-1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="4072eac90d28ee11b7880bd8f49e3369", SYMLINK+="esp32-2"
