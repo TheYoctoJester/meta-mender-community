@@ -35,7 +35,7 @@ local_conf_header:
     MENDER_RETRY_POLL_INTERVAL_SECONDS = "30"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.20"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.21"
 
     # Quiet boot: suppress kernel messages and text cursor on display
     CMDLINE:append = " consoleblank=0 loglevel=3 vt.global_cursor_default=0"
@@ -58,7 +58,7 @@ local_conf_header:
     MENDER_TENANT_TOKEN = "YOUR_TENANT_TOKEN"
 
     # Mender Monitor (commercial add-on)
-    SRC_URI:pn-mender-monitor = "file://${HOME}/mender-monitor-1.4.3.tar.gz"
+    SRC_URI:pn-mender-monitor = "file:///PATH/TO/mender-monitor-1.4.3.tar.gz"
 
     # Image additions
     IMAGE_FEATURES:append = " splash"
