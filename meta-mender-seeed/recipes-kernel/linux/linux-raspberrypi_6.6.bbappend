@@ -3,6 +3,7 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 SRC_URI:append:seeed-reterminal-mender = " \
     file://0001-overlays-add-reTerminal-dtbo-to-Makefile.patch \
     file://enable-audio.cfg \
+    file://enable-usb-serial.cfg \
     file://vc4graphics.cfg \
     file://reTerminal-overlay.dts \
 "

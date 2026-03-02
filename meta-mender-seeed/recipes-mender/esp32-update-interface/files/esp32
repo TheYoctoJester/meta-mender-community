@@ -27,10 +27,10 @@ DEVICE_CONF="/etc/mender-orchestrator/esp32-devices.conf"
 INSTANCE_BASE_DIR="/data/mender-orchestrator/esp32-instances"
 INSTANCE_DIR="${INSTANCE_BASE_DIR}/${INSTANCE_ID}"
 
-# esptool defaults — adjust per ESP32 variant and partition layout
-ESPTOOL_CHIP="esp32"
+# esptool defaults for ESP32-S3-DevKitC with Zephyr RTOS
+ESPTOOL_CHIP="esp32s3"
 ESPTOOL_BAUD="460800"
-ESPTOOL_FLASH_OFFSET="0x10000"
+ESPTOOL_FLASH_OFFSET="0x0"
 
 log() {
     >&2 echo "##### [${INTERFACE_NAME} ${INSTANCE_ID}] $1"
@@ -53,7 +53,7 @@ resolve_device() {
 ensure_instance_dir() {
     if [ ! -d "${INSTANCE_DIR}" ]; then
         mkdir -p "${INSTANCE_DIR}"
-        echo "device_type=esp32" > "${INSTANCE_DIR}/Provides"
+        echo "device_type=esp32s3" > "${INSTANCE_DIR}/Provides"
         echo "version=unknown" >> "${INSTANCE_DIR}/Provides"
     fi
 }

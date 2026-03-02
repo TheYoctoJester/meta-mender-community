@@ -1,10 +1,12 @@
-# ESP32 USB-to-Serial stable device naming for Mender Orchestrator
-# Adjust KERNELS values to match your USB port topology.
-# Run: udevadm info -a /dev/ttyUSBX | grep KERNELS
-# Common USB-to-Serial chips:
-#   CP2102: idVendor=10c4 idProduct=ea60
-#   CH340:  idVendor=1a86 idProduct=7523
-#   FTDI:   idVendor=0403 idProduct=6001
+# ESP32-S3-DevKitC stable device naming for Mender Orchestrator
+# Uses CP2102N USB-to-UART bridge serial numbers for deterministic
+# symlink assignment regardless of USB enumeration order.
+#
+# To find serial numbers of connected boards:
+#   udevadm info --name=/dev/ttyUSB0 --query=property | grep ID_SERIAL_SHORT
+#
+# After updating, reload rules:
+#   udevadm control --reload-rules && udevadm trigger
 
-SUBSYSTEM=="tty", ENV{ID_PATH}=="*usb-0:1.2*", SYMLINK+="esp32-1"
-SUBSYSTEM=="tty", ENV{ID_PATH}=="*usb-0:1.3*", SYMLINK+="esp32-2"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="CHANGEME_SERIAL_A", SYMLINK+="esp32-1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", ATTRS{serial}=="CHANGEME_SERIAL_B", SYMLINK+="esp32-2"

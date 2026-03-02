@@ -17,3 +17,4 @@ local_conf_header:
     IMAGE_INSTALL:append = " mender-orchestrator mender-orchestrator-support"
     IMAGE_INSTALL:append = " esp32-update-interface python3-esptool"
     IMAGE_INSTALL:append = " jq"
+    IMAGE_INSTALL:append = " kernel-module-usbserial kernel-module-cp210x"
