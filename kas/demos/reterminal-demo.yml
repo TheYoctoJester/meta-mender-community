@@ -63,6 +63,7 @@ local_conf_header:
     # Image additions
     IMAGE_FEATURES:append = " splash"
     IMAGE_INSTALL:append = " \
+        modules-load-mipi-dsi \
         weston \
         weston-init \
         mender-demo-app \
