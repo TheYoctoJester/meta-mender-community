@@ -1,0 +1,356 @@
+From 99a3cdaef6580db519738b3015e2f571174d1be6 Mon Sep 17 00:00:00 2001
+From: Josef Holzmayr <jester@theyoctojester.info>
+Date: Fri, 27 Feb 2026 19:53:13 +0000
+Subject: [PATCH] Add D-Bus state signal to mender-update daemon
+
+---
+ src/common/state_machine.hpp                  | 12 ++-
+ src/mender-update/CMakeLists.txt              |  6 ++
+ src/mender-update/daemon/ipc/CMakeLists.txt   |  7 ++
+ src/mender-update/daemon/ipc/server.cpp       | 87 +++++++++++++++++++
+ src/mender-update/daemon/ipc/server.hpp       | 56 ++++++++++++
+ src/mender-update/daemon/state_machine.hpp    | 11 +++
+ .../daemon/state_machine/state_machine.cpp    | 15 ++++
+ support/CMakeLists.txt                        |  1 +
+ support/dbus/io.mender.UpdateManager.conf     | 16 ++++
+ 9 files changed, 210 insertions(+), 1 deletion(-)
+ create mode 100644 src/mender-update/daemon/ipc/CMakeLists.txt
+ create mode 100644 src/mender-update/daemon/ipc/server.cpp
+ create mode 100644 src/mender-update/daemon/ipc/server.hpp
+ create mode 100644 support/dbus/io.mender.UpdateManager.conf
+
+diff --git a/src/common/state_machine.hpp b/src/common/state_machine.hpp
+index 682d139d..df4cab47 100644
+--- a/src/common/state_machine.hpp
++++ b/src/common/state_machine.hpp
+@@ -119,6 +119,7 @@ template <typename ContextType, typename EventType>
+ class StateMachineRunner : virtual public EventPoster<EventType> {
+ public:
+ 	using IterationCallback = function<void()>;
++	using StateChangeCallback = function<void(const string &)>;
+ 
+ 	StateMachineRunner(ContextType &ctx) :
+ 		ctx_(ctx) {
+@@ -163,6 +164,10 @@ public:
+ 		iteration_callback_ = callback;
+ 	}
+ 
++	void SetStateChangeCallback(StateChangeCallback callback) {
++		state_change_callback_ = callback;
++	}
++
+ private:
+ 	void RunOne() {
+ 		vector<State<ContextType, EventType> *> to_run;
+@@ -222,7 +227,11 @@ private:
+ 
+ 		if (!to_run.empty()) {
+ 			for (auto &state : to_run) {
+-				log::Trace("Entering state " + common::BestAvailableTypeName(*state));
++				auto state_name = common::BestAvailableTypeName(*state);
++				log::Trace("Entering state " + state_name);
++				if (state_change_callback_) {
++					state_change_callback_(state_name);
++				}
+ 				state->OnEnter(ctx_, *this);
+ 			}
+ 			// Since we ran something, there may be more events waiting to
+@@ -258,6 +267,7 @@ private:
+ 	shared_ptr<events::EventLoop> event_loop_;
+ 
+ 	IterationCallback iteration_callback_;
++	StateChangeCallback state_change_callback_;
+ };
+ 
+ } // namespace state_machine
+diff --git a/src/mender-update/CMakeLists.txt b/src/mender-update/CMakeLists.txt
+index 1416f628..cab4acf3 100644
+--- a/src/mender-update/CMakeLists.txt
++++ b/src/mender-update/CMakeLists.txt
+@@ -92,6 +92,12 @@ if(MENDER_EMBED_MENDER_AUTH)
+     mender_auth_cli
+   )
+ endif()
++if(MENDER_USE_DBUS)
++  add_subdirectory(daemon/ipc)
++  target_link_libraries(mender_update_daemon PUBLIC
++    mender_update_ipc_server
++  )
++endif()
+ 
+ add_library(mender_update_cli STATIC
+   cli/actions.cpp
+diff --git a/src/mender-update/daemon/ipc/CMakeLists.txt b/src/mender-update/daemon/ipc/CMakeLists.txt
+new file mode 100644
+index 00000000..9ada351c
+--- /dev/null
++++ b/src/mender-update/daemon/ipc/CMakeLists.txt
+@@ -0,0 +1,7 @@
++add_library(mender_update_ipc_server STATIC server.cpp)
++target_link_libraries(mender_update_ipc_server PUBLIC
++  common_dbus
++  common_error
++  common_events
++  common_log
++)
+diff --git a/src/mender-update/daemon/ipc/server.cpp b/src/mender-update/daemon/ipc/server.cpp
+new file mode 100644
+index 00000000..235fdb26
+--- /dev/null
++++ b/src/mender-update/daemon/ipc/server.cpp
+@@ -0,0 +1,87 @@
++// Copyright 2023 Northern.tech AS
++//
++//    Licensed under the Apache License, Version 2.0 (the "License");
++//    you may not use this file except in compliance with the License.
++//    You may obtain a copy of the License at
++//
++//        http://www.apache.org/licenses/LICENSE-2.0
++//
++//    Unless required by applicable law or agreed to in writing, software
++//    distributed under the License is distributed on an "AS IS" BASIS,
++//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++//    See the License for the specific language governing permissions and
++//    limitations under the License.
++
++#include <mender-update/daemon/ipc/server.hpp>
++
++#include <cstdlib>
++#include <string>
++
++#include <cxxabi.h>
++
++#include <common/error.hpp>
++#include <common/expected.hpp>
++#include <common/log.hpp>
++#include <common/platform/dbus.hpp>
++
++namespace mender {
++namespace update {
++namespace daemon {
++namespace ipc {
++
++namespace dbus = mender::common::dbus;
++namespace error = mender::common::error;
++namespace expected = mender::common::expected;
++namespace log = mender::common::log;
++
++using namespace std;
++
++UpdateManagerDBus::UpdateManagerDBus(events::EventLoop &loop) :
++	current_state_("unknown"),
++	dbus_server_(loop, "io.mender.UpdateManager") {
++}
++
++string UpdateManagerDBus::DemangleStateName(const string &mangled) {
++	int status = 0;
++	char *demangled = abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, &status);
++	string result;
++	if (status == 0 && demangled) {
++		result = demangled;
++		// Extract class name after last "::"
++		auto pos = result.rfind("::");
++		if (pos != string::npos) {
++			result = result.substr(pos + 2);
++		}
++		free(demangled);
++	} else {
++		// Fallback: return the raw name
++		result = mangled;
++	}
++	return result;
++}
++
++error::Error UpdateManagerDBus::Listen() {
++	auto dbus_obj = make_shared<dbus::DBusObject>("/io/mender/UpdateManager");
++	dbus_obj->AddMethodHandler<expected::ExpectedString>(
++		"io.mender.Update1", "GetCurrentState", [this]() {
++			return current_state_;
++		});
++	return dbus_server_.AdvertiseObject(dbus_obj);
++}
++
++void UpdateManagerDBus::EmitStateChanged(const string &mangled_name) {
++	current_state_ = DemangleStateName(mangled_name);
++	auto err = dbus_server_.EmitSignal<string>(
++		"/io/mender/UpdateManager",
++		"io.mender.Update1",
++		"StateChanged",
++		current_state_);
++	if (err != error::NoError) {
++		log::Error("Failed to emit StateChanged signal: " + err.String());
++	}
++}
++
++} // namespace ipc
++} // namespace daemon
++} // namespace update
++} // namespace mender
+diff --git a/src/mender-update/daemon/ipc/server.hpp b/src/mender-update/daemon/ipc/server.hpp
+new file mode 100644
+index 00000000..5f97b190
+--- /dev/null
++++ b/src/mender-update/daemon/ipc/server.hpp
+@@ -0,0 +1,56 @@
++// Copyright 2023 Northern.tech AS
++//
++//    Licensed under the Apache License, Version 2.0 (the "License");
++//    you may not use this file except in compliance with the License.
++//    You may obtain a copy of the License at
++//
++//        http://www.apache.org/licenses/LICENSE-2.0
++//
++//    Unless required by applicable law or agreed to in writing, software
++//    distributed under the License is distributed on an "AS IS" BASIS,
++//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++//    See the License for the specific language governing permissions and
++//    limitations under the License.
++
++#ifndef MENDER_UPDATE_IPC_SERVER_HPP
++#define MENDER_UPDATE_IPC_SERVER_HPP
++
++#include <string>
++
++#include <common/platform/dbus.hpp>
++#include <common/error.hpp>
++#include <common/events.hpp>
++
++namespace mender {
++namespace update {
++namespace daemon {
++namespace ipc {
++
++namespace dbus = mender::common::dbus;
++namespace error = mender::common::error;
++namespace events = mender::common::events;
++
++using namespace std;
++
++class UpdateManagerDBus {
++public:
++	UpdateManagerDBus(events::EventLoop &loop);
++
++	error::Error Listen();
++
++	void EmitStateChanged(const string &mangled_name);
++
++private:
++	// Extract clean class name from RTTI mangled name
++	static string DemangleStateName(const string &mangled);
++
++	string current_state_;
++	dbus::DBusServer dbus_server_;
++};
++
++} // namespace ipc
++} // namespace daemon
++} // namespace update
++} // namespace mender
++
++#endif // MENDER_UPDATE_IPC_SERVER_HPP
+diff --git a/src/mender-update/daemon/state_machine.hpp b/src/mender-update/daemon/state_machine.hpp
+index 669b6016..f489ce6a 100644
+--- a/src/mender-update/daemon/state_machine.hpp
++++ b/src/mender-update/daemon/state_machine.hpp
+@@ -15,6 +15,9 @@
+ #ifndef MENDER_UPDATE_STATE_MACHINE_HPP
+ #define MENDER_UPDATE_STATE_MACHINE_HPP
+ 
++#include <memory>
++
++#include <common/config.h>
+ #include <common/error.hpp>
+ #include <common/events.hpp>
+ #include <common/state_machine.hpp>
+@@ -25,6 +28,10 @@
+ #include <mender-update/daemon/state_events.hpp>
+ #include <mender-update/daemon/states.hpp>
+ 
++#ifdef MENDER_USE_DBUS
++#include <mender-update/daemon/ipc/server.hpp>
++#endif
++
+ namespace mender {
+ namespace update {
+ namespace daemon {
+@@ -528,6 +535,10 @@ private:
+ 	} deployment_tracking_;
+ 
+ 	sm::StateMachineRunner<Context, StateEvent> runner_;
++
++#ifdef MENDER_USE_DBUS
++	std::unique_ptr<ipc::UpdateManagerDBus> ipc_server_;
++#endif
+ };
+ 
+ } // namespace daemon
+diff --git a/src/mender-update/daemon/state_machine/state_machine.cpp b/src/mender-update/daemon/state_machine/state_machine.cpp
+index 11d6a797..2ba1c897 100644
+--- a/src/mender-update/daemon/state_machine/state_machine.cpp
++++ b/src/mender-update/daemon/state_machine/state_machine.cpp
+@@ -15,6 +15,7 @@
+ #include <mender-update/daemon/state_machine.hpp>
+ 
+ #include <client_shared/conf.hpp>
++#include <common/config.h>
+ #include <common/key_value_database.hpp>
+ #include <common/log.hpp>
+ 
+@@ -77,6 +78,20 @@ StateMachine::StateMachine(Context &ctx, events::EventLoop &event_loop) :
+ 	runner_.AddStateMachine(deployment_tracking_.states_);
+ 	runner_.AddStateMachine(main_states_);
+ 	runner_.AttachToEventLoop(event_loop_);
++
++#ifdef MENDER_USE_DBUS
++	ipc_server_ = std::make_unique<ipc::UpdateManagerDBus>(event_loop);
++	auto err_ipc = ipc_server_->Listen();
++	if (err_ipc != error::NoError) {
++		log::Error("Failed to start UpdateManager D-Bus server: " + err_ipc.String());
++		ipc_server_.reset();
++	} else {
++		runner_.SetStateChangeCallback([this](const string &state_name) {
++			ipc_server_->EmitStateChanged(state_name);
++		});
++	}
++#endif
++
+ 	ctx.authenticator.RegisterTokenReceivedCallback([&ctx]() {
+ 		if (ctx.inventory_client->has_submitted_inventory) {
+ 			log::Debug("Client has re-authenticated - clear inventory data cache");
+diff --git a/support/CMakeLists.txt b/support/CMakeLists.txt
+index 79f8a2a0..0d5b5318 100644
+--- a/support/CMakeLists.txt
++++ b/support/CMakeLists.txt
+@@ -6,6 +6,7 @@ option(MENDER_DATA_DIR_SYSTEMD_UNIT "Install the mender-data-dir.service file" O
+ 
+ set(DBUS_POLICY_FILES
+   dbus/io.mender.AuthenticationManager.conf
++  dbus/io.mender.UpdateManager.conf
+ )
+ set(DOCS_EXAMPLES demo.crt)
+ set(IDENTITYSCRIPTS mender-device-identity)
+diff --git a/support/dbus/io.mender.UpdateManager.conf b/support/dbus/io.mender.UpdateManager.conf
+new file mode 100644
+index 00000000..f274ef4a
+--- /dev/null
++++ b/support/dbus/io.mender.UpdateManager.conf
+@@ -0,0 +1,16 @@
++<!DOCTYPE busconfig PUBLIC
++          "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
++          "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
++<busconfig>
++
++  <!-- Only root can own the Mender UpdateManager service -->
++  <policy user="root">
++    <allow own="io.mender.UpdateManager"/>
++  </policy>
++
++  <!-- Allow root to invoke methods on Mender UpdateManager -->
++  <policy user="root">
++    <allow send_destination="io.mender.UpdateManager"/>
++    <allow receive_sender="io.mender.UpdateManager"/>
++  </policy>
++</busconfig>
+-- 
+2.34.1
+

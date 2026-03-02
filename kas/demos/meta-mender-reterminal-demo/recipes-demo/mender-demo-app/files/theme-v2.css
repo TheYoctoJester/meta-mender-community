@@ -46,3 +46,8 @@
     font-size: 18px;
     color: #C0A898;
 }
+
+#footer-separator {
+    font-size: 18px;
+    color: rgba(192, 168, 152, 0.4);
+}

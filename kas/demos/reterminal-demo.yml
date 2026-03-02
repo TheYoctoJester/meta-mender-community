@@ -6,6 +6,9 @@ repos:
     layers:
       kas/demos/meta-mender-reterminal-demo:
       kas/demos/meta-mender-raspberrypi-wifi:
+  meta-mender:
+    layers:
+      meta-mender-commercial:
   meta-openembedded:
     layers:
       meta-python:
@@ -17,20 +20,30 @@ local_conf_header:
     DISTRO_FEATURES:remove = "x11"
     PACKAGECONFIG:append:pn-weston = " shell-kiosk"
 
-    # Demo app theme and version (set to "v2" / "2.0" for second image)
+    # Demo app theme and version (set to "v2" / "ew2026-v2.0" for second image)
     DEMO_APP_THEME = "v1"
-    DEMO_APP_VERSION = "1.0"
+    DEMO_APP_VERSION = "ew2026-v1.0"
 
     # WiFi
     DEMO_WIFI_SSID = "YOUR_SSID"
     DEMO_WIFI_PASSKEY = "YOUR_PASSKEY"
-    LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
+    LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch commercial_mender-yocto-layer-license"
+
+    # Mender polling intervals (short for demo responsiveness)
+    MENDER_UPDATE_POLL_INTERVAL_SECONDS = "5"
+    MENDER_INVENTORY_POLL_INTERVAL_SECONDS = "15"
+    MENDER_RETRY_POLL_INTERVAL_SECONDS = "30"
 
     # Mender artifact versioning
-    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.10"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v1.20"
 
-    # Disable kernel console blanking (effective on full flash only)
-    CMDLINE:append = " consoleblank=0"
+    # Quiet boot: suppress kernel messages and text cursor on display
+    CMDLINE:append = " consoleblank=0 loglevel=3 vt.global_cursor_default=0"
+
+    # GPU firmware: suppress rainbow splash, no boot delay
+    DISABLE_SPLASH = "1"
+    BOOT_DELAY = "0"
+    BOOT_DELAY_MS = "0"
 
     # Mender-connect default user
     MENDER_CONNECT_USER = "mender"
@@ -44,7 +57,11 @@ local_conf_header:
     MENDER_SERVER_URL = "https://hosted.mender.io"
     MENDER_TENANT_TOKEN = "YOUR_TENANT_TOKEN"
 
+    # Mender Monitor (commercial add-on)
+    SRC_URI:pn-mender-monitor = "file://${HOME}/mender-monitor-1.4.3.tar.gz"
+
     # Image additions
+    IMAGE_FEATURES:append = " splash"
     IMAGE_INSTALL:append = " \
         weston \
         weston-init \
@@ -55,4 +72,10 @@ local_conf_header:
         kernel-module-brcmfmac-wcc \
         wireless-regdb \
         mender-connect \
+        mender-monitor \
+        mender-monitor-buttons \
+        kernel-module-gpio-keys \
+        kernel-module-gpio-pca953x \
+        kernel-module-pinctrl-mcp23s08 \
+        kernel-module-pinctrl-mcp23s08-i2c \
     "

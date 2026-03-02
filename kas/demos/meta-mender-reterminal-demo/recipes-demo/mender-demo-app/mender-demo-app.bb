@@ -7,7 +7,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/Apache-2.0;md5=89aea4e17d99a7cacdbeed46a0096b10"
 
 DEMO_APP_THEME ?= "v1"
-DEMO_APP_VERSION ?= "1.0"
+DEMO_APP_VERSION ?= "ew2026-v1.0"
 
 SRC_URI = " \
     file://mender-demo-app.py \
@@ -22,7 +22,6 @@ S = "${WORKDIR}"
 
 RDEPENDS:${PN} = " \
     python3-pygobject \
-    python3-pydbus \
     gtk+3 \
     python3-core \
     python3-json \

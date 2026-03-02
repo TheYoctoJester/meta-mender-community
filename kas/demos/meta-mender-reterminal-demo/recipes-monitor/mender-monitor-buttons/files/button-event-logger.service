@@ -1,0 +1,13 @@
+[Unit]
+Description=reTerminal Button Event Logger for Mender Monitor
+After=mender-monitor.service
+Wants=mender-monitor.service
+
+[Service]
+Type=simple
+ExecStart=/opt/mender-monitor-buttons/button-event-logger.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -4,6 +4,9 @@
 # Mender OTA Demo Application for Seeed Studio reTerminal
 # Displays Mender device state, artifact info, and network status
 # in a fullscreen kiosk-style GTK3 window.
+#
+# Auth and update state are monitored reactively via D-Bus signals.
+# Name-owner watching handles the boot race (app starts before mender).
 
 import subprocess
 import socket
@@ -11,12 +14,48 @@ import socket
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
+from gi.repository import Gtk, Gdk, Gio, GLib, GdkPixbuf
 
 DEMO_VERSION = "@DEMO_VERSION@"
 APP_DIR = "/opt/mender-demo-app"
 CSS_PATH = APP_DIR + "/theme.css"
 LOGO_PATH = APP_DIR + "/mender-logo.svg"
+
+# Map demangled C++ state class names to display labels
+STATE_LABELS = {
+    "InitState": "Initializing",
+    "IdleState": "Idle",
+    "ScheduleNextPollState": "Scheduling",
+    "SubmitInventoryState": "Sending inventory",
+    "PollForDeploymentState": "Checking for update",
+    "SendStatusUpdateState": "Reporting status",
+    "UpdateDownloadState": "Downloading",
+    "UpdateDownloadCancelState": "Cancelling download",
+    "UpdateInstallState": "Installing",
+    "UpdateCheckRebootState": "Checking reboot",
+    "UpdateRebootState": "Rebooting",
+    "UpdateVerifyRebootState": "Verifying reboot",
+    "UpdateBeforeCommitState": "Preparing commit",
+    "UpdateCommitState": "Committing",
+    "UpdateAfterCommitState": "Finalizing commit",
+    "UpdateCheckRollbackState": "Checking rollback",
+    "UpdateRollbackState": "Rolling back",
+    "UpdateRollbackRebootState": "Rollback reboot",
+    "UpdateVerifyRollbackRebootState": "Verifying rollback",
+    "UpdateRollbackSuccessfulState": "Rollback complete",
+    "UpdateFailureState": "Update failed",
+    "UpdateSaveProvidesState": "Saving provides",
+    "UpdateCleanupState": "Cleaning up",
+    "ClearArtifactDataState": "Clearing data",
+    "StateLoopState": "State loop",
+    "EndOfDeploymentState": "Deployment complete",
+    "ExitState": "Exiting",
+    "StateScriptState": "Running script",
+    "SaveStateScriptState": "Running script",
+}
+
+# States that signal the end of a deployment (trigger artifact re-fetch)
+DEPLOYMENT_END_STATES = {"EndOfDeploymentState", "IdleState"}
 
 
 def get_mender_provides():
@@ -42,21 +81,6 @@ def get_mender_provides():
     return info
 
 
-def get_mender_auth_state():
-    """Check Mender authentication state via D-Bus."""
-    try:
-        from pydbus import SystemBus
-        bus = SystemBus()
-        mender = bus.get("io.mender.AuthenticationManager",
-                         "/io/mender/AuthenticationManager")
-        jwt = mender.GetJwtToken()
-        if jwt and len(jwt) > 0 and jwt[0]:
-            return "Authenticated"
-        return "Not authenticated"
-    except Exception:
-        return "Mender not running"
-
-
 def get_default_interface():
     """Get the name of the default network interface from /proc/net/route."""
     try:
@@ -77,7 +101,6 @@ def get_ip_address():
         return "No network", ""
 
     try:
-        # Use a UDP socket to determine the source IP for external traffic
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(1)
         s.connect(("8.8.8.8", 53))
@@ -87,7 +110,6 @@ def get_ip_address():
     except (OSError, socket.error):
         pass
 
-    # Fallback: try to read from /proc/net/fib_trie or hostname
     try:
         hostname = socket.gethostname()
         ip = socket.gethostbyname(hostname)
@@ -107,75 +129,82 @@ class MenderDemoWindow(Gtk.ApplicationWindow):
         self.set_name("main-window")
         self.fullscreen()
 
+        # Track current update state
+        self._update_state = ""
+        self._update_proxy = None
+        self._heartbeat_on = False
+
         # Main vertical layout
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         vbox.set_name("main-container")
         self.add(vbox)
 
-        # Content area (expands to fill)
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        # Content area — logo only, centered
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         content.set_name("content-area")
         content.set_valign(Gtk.Align.CENTER)
         content.set_halign(Gtk.Align.CENTER)
         vbox.pack_start(content, True, True, 0)
 
-        # Mender logo
         self.logo = Gtk.Image()
         self.load_logo()
-        content.pack_start(self.logo, False, False, 16)
-
-        # Title
-        title = Gtk.Label(label="Mender Demo Application")
-        title.set_name("title-label")
-        content.pack_start(title, False, False, 0)
-
-        # Version
-        version = Gtk.Label(label="Version " + DEMO_VERSION)
-        version.set_name("version-label")
-        content.pack_start(version, False, False, 0)
-
-        # Spacer
-        content.pack_start(Gtk.Box(), False, False, 8)
-
-        # Artifact info
-        self.artifact_label = Gtk.Label(label="Artifact: ...")
-        self.artifact_label.set_name("info-label")
-        content.pack_start(self.artifact_label, False, False, 4)
-
-        # Auth state
-        auth_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        auth_box.set_halign(Gtk.Align.CENTER)
-        self.auth_indicator = Gtk.Label()
-        self.auth_indicator.set_name("auth-indicator")
-        auth_box.pack_start(self.auth_indicator, False, False, 0)
-        self.auth_label = Gtk.Label(label="Device state: ...")
-        self.auth_label.set_name("info-label")
-        auth_box.pack_start(self.auth_label, False, False, 0)
-        content.pack_start(auth_box, False, False, 4)
+        content.pack_start(self.logo, False, False, 0)
 
         # Footer bar
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         footer.set_name("footer-bar")
 
-        self.ip_label = Gtk.Label(label="IP: ...")
-        self.ip_label.set_name("footer-label")
-        self.ip_label.set_halign(Gtk.Align.START)
-        footer.pack_start(self.ip_label, True, True, 16)
+        # Left side: version | artifact | state
+        left_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        left_box.set_halign(Gtk.Align.START)
 
-        self.iface_label = Gtk.Label(label="")
-        self.iface_label.set_name("footer-label")
-        self.iface_label.set_halign(Gtk.Align.END)
-        footer.pack_end(self.iface_label, False, False, 16)
+        version_label = Gtk.Label(label=DEMO_VERSION)
+        version_label.set_name("footer-label")
+        left_box.pack_start(version_label, False, False, 0)
+
+        self._add_separator(left_box)
+
+        self.artifact_label = Gtk.Label(label="Artifact: ...")
+        self.artifact_label.set_name("footer-label")
+        left_box.pack_start(self.artifact_label, False, False, 0)
+
+        self._sep_state = self._add_separator(left_box)
+
+        self.state_label = Gtk.Label(label="")
+        self.state_label.set_name("footer-label")
+        left_box.pack_start(self.state_label, False, False, 0)
+
+        footer.pack_start(left_box, True, True, 16)
+
+        # Right side: IP (iface) | heartbeat
+        right_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        right_box.set_halign(Gtk.Align.END)
+
+        self.ip_label = Gtk.Label(label="...")
+        self.ip_label.set_name("footer-label")
+        right_box.pack_start(self.ip_label, False, False, 0)
+
+        self._add_separator(right_box)
+
+        self.heartbeat_label = Gtk.Label()
+        self.heartbeat_label.set_name("footer-label")
+        right_box.pack_start(self.heartbeat_label, False, False, 0)
+
+        footer.pack_end(right_box, False, False, 16)
 
         vbox.pack_end(footer, False, False, 0)
 
         # Initial data load
-        self.update_mender_state()
+        self._do_update_artifact()
         self.update_ip_address()
 
-        # Periodic updates
-        GLib.timeout_add_seconds(5, self.update_mender_state)
-        GLib.timeout_add_seconds(30, self.update_ip_address)
+        # Set up D-Bus proxy (async, with name-owner watching)
+        self._setup_update_proxy()
+
+        # Periodic fallback polls
+        GLib.timeout_add_seconds(30, self._do_update_artifact)
+        GLib.timeout_add_seconds(5, self.update_ip_address)
+        GLib.timeout_add(1000, self._tick_heartbeat)
 
         self.show_all()
 
@@ -193,46 +222,132 @@ class MenderDemoWindow(Gtk.ApplicationWindow):
             print("Warning: Could not load CSS theme: " + str(e))
 
     def load_logo(self):
-        """Load and display the Mender logo SVG."""
+        """Load and display the Mender logo SVG scaled to 85% of screen width."""
         try:
+            screen = Gdk.Screen.get_default()
+            logo_width = int(screen.get_width() * 0.85)
+            # Trimmed SVG viewBox is 662.4 x 164.9
+            logo_height = int(logo_width * 164.9 / 662.4)
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                LOGO_PATH, 200, 80, True
+                LOGO_PATH, logo_width, logo_height, True
             )
             self.logo.set_from_pixbuf(pixbuf)
         except GLib.Error:
-            # Fallback: show text instead of logo
             self.logo.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
 
-    def update_mender_state(self):
-        """Poll Mender for artifact and auth info."""
+    @staticmethod
+    def _add_separator(box):
+        """Add a pipe separator label to a box and return it."""
+        sep = Gtk.Label(label="|")
+        sep.set_name("footer-separator")
+        box.pack_start(sep, False, False, 0)
+        return sep
+
+    def _tick_heartbeat(self):
+        """Toggle heartbeat indicator every second."""
+        self._heartbeat_on = not self._heartbeat_on
+        if self._heartbeat_on:
+            self.heartbeat_label.set_markup(
+                '<span foreground="#00cc88">\u2665</span>'
+            )
+        else:
+            self.heartbeat_label.set_markup(
+                '<span foreground="#006644">\u2665</span>'
+            )
+        return True  # keep timer active
+
+    # ── Update state D-Bus ────────────────────────────────────────────────
+
+    def _setup_update_proxy(self):
+        """Create async update proxy. Watches for service to appear at boot."""
+        Gio.DBusProxy.new_for_bus(
+            Gio.BusType.SYSTEM,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            "io.mender.UpdateManager",
+            "/io/mender/UpdateManager",
+            "io.mender.Update1",
+            None,
+            self._on_update_proxy_ready,
+        )
+
+    def _on_update_proxy_ready(self, _source, result):
+        """Callback when update D-Bus proxy is ready."""
+        try:
+            self._update_proxy = Gio.DBusProxy.new_for_bus_finish(result)
+            self._update_proxy.connect("g-signal", self._on_update_signal)
+            self._update_proxy.connect(
+                "notify::g-name-owner", self._on_update_owner_changed
+            )
+            # Service may already be running
+            if self._update_proxy.get_name_owner():
+                self._do_update_state_check()
+        except GLib.Error as e:
+            print("Warning: Could not create update proxy: " + str(e))
+
+    def _on_update_owner_changed(self, proxy, _pspec):
+        """Called when mender-update appears or disappears on the bus."""
+        if proxy.get_name_owner():
+            self._do_update_state_check()
+        else:
+            self._set_update_state("")
+
+    def _do_update_state_check(self):
+        """Query current update state via the proxy."""
+        try:
+            result = self._update_proxy.call_sync(
+                "GetCurrentState", None, Gio.DBusCallFlags.NONE, 5000, None
+            )
+            (state_name,) = result.unpack()
+            self._set_update_state(state_name)
+        except GLib.Error:
+            self._set_update_state("")
+
+    def _on_update_signal(self, _proxy, _sender, signal_name, params):
+        """Handle StateChanged signal."""
+        if signal_name == "StateChanged":
+            (state_name,) = params.unpack()
+            self._set_update_state(state_name)
+
+            # Re-fetch artifact after deployment ends
+            if state_name in DEPLOYMENT_END_STATES:
+                GLib.timeout_add_seconds(1, self._do_update_artifact_once)
+
+    def _set_update_state(self, state_name):
+        """Update the state label in the footer."""
+        self._update_state = state_name
+        label = STATE_LABELS.get(state_name, state_name)
+        if label:
+            self.state_label.set_text(label)
+            self._sep_state.show()
+        else:
+            self.state_label.set_text("")
+            self._sep_state.hide()
+
+    # ── Artifact polling ─────────────────────────────────────────────────
+
+    def _do_update_artifact(self):
+        """Poll for artifact info (periodic fallback)."""
         provides = get_mender_provides()
         self.artifact_label.set_text(
             "Artifact: " + provides["artifact_name"]
         )
-
-        auth = get_mender_auth_state()
-        self.auth_label.set_text("Device state: " + auth)
-
-        if auth == "Authenticated":
-            self.auth_indicator.set_markup(
-                '<span foreground="#00cc88">●</span>'
-            )
-        elif auth == "Not authenticated":
-            self.auth_indicator.set_markup(
-                '<span foreground="#ffaa00">●</span>'
-            )
-        else:
-            self.auth_indicator.set_markup(
-                '<span foreground="#ff4444">●</span>'
-            )
-
         return True  # keep the timeout active
+
+    def _do_update_artifact_once(self):
+        """Single-shot artifact refresh after deployment end."""
+        self._do_update_artifact()
+        return False  # do not repeat
+
+    # ── IP polling ───────────────────────────────────────────────────────
 
     def update_ip_address(self):
         """Poll for current IP address and interface."""
         ip, iface = get_ip_address()
-        self.ip_label.set_text("IP: " + str(ip))
-        self.iface_label.set_text(str(iface))
+        if iface:
+            self.ip_label.set_text(str(ip) + " (" + str(iface) + ")")
+        else:
+            self.ip_label.set_text(str(ip))
         return True  # keep the timeout active
 
 
@@ -244,7 +359,6 @@ class MenderDemoApp(Gtk.Application):
         window = MenderDemoWindow(self)
         window.present()
         # Inhibit idle/sleep so the compositor never blanks the display.
-        # On Wayland this acquires a zwp_idle_inhibit_v1 inhibitor.
         self.inhibit(window, Gtk.ApplicationInhibitFlags.IDLE, "kiosk mode")
 
 
