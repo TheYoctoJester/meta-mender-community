@@ -7,7 +7,6 @@ SRC_URI = " \
     file://esp32 \
     file://esp32-devices.conf \
     file://99-esp32-usb.rules \
-    file://topology.yaml \
 "
 
 RDEPENDS:${PN} = "python3-esptool jq"
@@ -25,14 +24,10 @@ do_install() {
     install -d ${D}${sysconfdir}/udev/rules.d
     install -m 0644 ${WORKDIR}/99-esp32-usb.rules ${D}${sysconfdir}/udev/rules.d/99-esp32-usb.rules
 
-    # Orchestrator topology
-    install -d ${D}/data/mender-orchestrator
-    install -m 0644 ${WORKDIR}/topology.yaml ${D}/data/mender-orchestrator/topology.yaml
 }
 
 FILES:${PN} = " \
     ${datadir}/mender-orchestrator/interfaces/v1/esp32 \
     ${sysconfdir}/mender-orchestrator/esp32-devices.conf \
     ${sysconfdir}/udev/rules.d/99-esp32-usb.rules \
-    /data/mender-orchestrator/topology.yaml \
 "
