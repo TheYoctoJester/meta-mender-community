@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Discover the /dev/input/eventX for the gpio_keys device
 for sysdev in /sys/class/input/event*/device; do
     name=$(cat "$sysdev/name" 2>/dev/null)
