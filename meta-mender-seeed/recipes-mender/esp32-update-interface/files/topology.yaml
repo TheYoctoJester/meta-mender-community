@@ -3,9 +3,6 @@ kind: topology
 system_type: "reterminal-esp32-system"
 
 components:
-  - component_type: gateway
-    interface: rootfs-image
-
   - component_type: esp32
     interface: esp32
     interface_args: ["1"]

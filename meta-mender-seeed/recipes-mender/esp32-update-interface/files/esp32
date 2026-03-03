@@ -63,16 +63,17 @@ case "$STATE" in
     Identity)
         ensure_instance_dir
         resolve_device
-        # Try to read the ESP32 chip ID via esptool for a hardware-based identity.
+        # Try to read the ESP32 MAC address via esptool for a hardware-based identity.
+        # ESP32-S3 has no chip ID, so we use the MAC address instead.
         # Fall back to a config-derived ID if the device is not reachable.
-        CHIP_ID=""
+        MAC_ID=""
         if [ -c "${DEVICE_PATH}" ] || [ -e "${DEVICE_PATH}" ]; then
-            CHIP_ID=$(esptool.py --chip "${ESPTOOL_CHIP}" --port "${DEVICE_PATH}" \
+            MAC_ID=$(esptool.py --chip "${ESPTOOL_CHIP}" --port "${DEVICE_PATH}" \
                 --baud "${ESPTOOL_BAUD}" chip_id 2>/dev/null \
-                | grep -i "chip id" | awk '{print $NF}') || true
+                | grep "^MAC:" | head -1 | awk '{print $2}' | tr -d ':') || true
         fi
-        if [ -n "${CHIP_ID}" ]; then
-            echo "id=${CHIP_ID}"
+        if [ -n "${MAC_ID}" ]; then
+            echo "id=${MAC_ID}"
         else
             echo "id=esp32-${INSTANCE_ID}"
         fi
@@ -134,16 +135,6 @@ case "$STATE" in
         echo "version=${NEW_VERSION}" >> "${INSTANCE_DIR}/Provides"
         ;;
 
-    ArtifactRollback)
-        ensure_instance_dir
-        OLD_VERSION=$(cat "${INSTANCE_DIR}/OldVersionRef")
-        NEW_VERSION=$(cat "${INSTANCE_DIR}/NewVersionRef")
-        log "${STATE} [Update to ${NEW_VERSION} failed, restoring version to ${OLD_VERSION}]"
-
-        sed -i '/^version=/d' "${INSTANCE_DIR}/Provides"
-        echo "version=${OLD_VERSION}" >> "${INSTANCE_DIR}/Provides"
-        ;;
-
     ArtifactFailure)
         ensure_instance_dir
         NEW_VERSION=$(cat "${INSTANCE_DIR}/NewVersionRef" 2>/dev/null || echo "unknown")
@@ -160,10 +151,6 @@ case "$STATE" in
 
     NeedsUnpackedArtifact)
         echo "Yes"
-        ;;
-
-    SupportsRollback)
-        echo "No"
         ;;
 
 esac

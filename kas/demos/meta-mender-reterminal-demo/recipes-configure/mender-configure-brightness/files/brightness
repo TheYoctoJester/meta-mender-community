@@ -1,0 +1,44 @@
+#!/bin/sh
+# Mender Configure apply script: display brightness
+# Sets the reTerminal backlight brightness (0-255) from the "brightness" key.
+
+if [ $# -ne 1 ]; then
+    echo "Must be invoked with exactly one argument: The JSON configuration." 1>&2
+    exit 2
+fi
+
+CONFIG="$1"
+
+if ! [ -e "$CONFIG" ]; then
+    echo "Error: $CONFIG does not exist." 1>&2
+    exit 1
+fi
+
+BRIGHTNESS="$(jq -r -e .brightness < "$CONFIG")"
+return_code=$?
+case $return_code in
+    0)
+        ;;
+    1)
+        echo "No brightness configuration found."
+        exit 0
+        ;;
+    *)
+        exit $return_code
+        ;;
+esac
+
+BACKLIGHT=$(find /sys/class/backlight -maxdepth 1 -mindepth 1 | head -1)
+if [ -z "$BACKLIGHT" ]; then
+    echo "No backlight device found." 1>&2
+    exit 1
+fi
+
+MAX=$(cat "$BACKLIGHT/max_brightness")
+if [ "$BRIGHTNESS" -lt 0 ] 2>/dev/null || [ "$BRIGHTNESS" -gt "$MAX" ] 2>/dev/null; then
+    echo "Brightness value $BRIGHTNESS out of range (0-$MAX)." 1>&2
+    exit 1
+fi
+
+echo "$BRIGHTNESS" > "$BACKLIGHT/brightness"
+echo "Display brightness set to $BRIGHTNESS (max: $MAX)"
