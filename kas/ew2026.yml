@@ -22,4 +22,4 @@ local_conf_header:
     PREFERRED_VERSION_python3-reedsolo = "1.7.0"
     SRC_URI:pn-mender-orchestrator = "file:///PATH/TO/mender-orchestrator-0.4.0.tar.xz"
     PREFERRED_VERSION_mender-monitor = "1.4.3"
-    MENDER_ARTIFACT_NAME = "reterminal-ew2026-v1.0"
+    MENDER_ARTIFACT_NAME = "reterminal-ew2026-v1.1"

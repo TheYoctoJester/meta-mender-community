@@ -1,0 +1,10 @@
+header:
+  version: 14
+  includes:
+  - kas/ew2026.yml
+
+local_conf_header:
+  zzzz-ew2026-v2: |
+    DEMO_APP_THEME = "v2"
+    DEMO_APP_VERSION = "ew2026-v2.0"
+    MENDER_ARTIFACT_NAME = "reterminal-ew2026-v2.0"

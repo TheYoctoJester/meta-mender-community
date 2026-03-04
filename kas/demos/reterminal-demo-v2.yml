@@ -1,0 +1,8 @@
+header:
+  version: 14
+
+local_conf_header:
+  reterminal-demo-v2: |
+    DEMO_APP_THEME = "v2"
+    DEMO_APP_VERSION = "ew2026-v2.0"
+    MENDER_ARTIFACT_NAME = "reterminal-demo-v2"

@@ -20,7 +20,7 @@ FILES="$2"
 COMPONENT_TYPE="$3"
 INSTANCE_ID="$4"
 
-DATA_DIR="${FILES}/data"
+DATA_DIR="${FILES}/files"
 HEADER_DIR="${FILES}/header"
 
 DEVICE_CONF="/etc/mender-orchestrator/esp32-devices.conf"
@@ -63,14 +63,21 @@ case "$STATE" in
     Identity)
         ensure_instance_dir
         resolve_device
-        # Try to read the ESP32 MAC address via esptool for a hardware-based identity.
-        # ESP32-S3 has no chip ID, so we use the MAC address instead.
-        # Fall back to a config-derived ID if the device is not reachable.
-        MAC_ID=""
-        if [ -c "${DEVICE_PATH}" ] || [ -e "${DEVICE_PATH}" ]; then
-            MAC_ID=$(esptool.py --chip "${ESPTOOL_CHIP}" --port "${DEVICE_PATH}" \
-                --baud "${ESPTOOL_BAUD}" chip_id 2>/dev/null \
-                | grep "^MAC:" | head -1 | awk '{print $2}' | tr -d ':') || true
+        # Use cached MAC to avoid resetting the ESP32 on every inventory poll.
+        # esptool.py toggles DTR/RTS which reboots the chip each time.
+        CACHED_MAC="${INSTANCE_DIR}/MacId"
+        if [ -f "${CACHED_MAC}" ]; then
+            MAC_ID=$(cat "${CACHED_MAC}")
+        else
+            MAC_ID=""
+            if [ -c "${DEVICE_PATH}" ] || [ -e "${DEVICE_PATH}" ]; then
+                MAC_ID=$(esptool.py --chip "${ESPTOOL_CHIP}" --port "${DEVICE_PATH}" \
+                    --baud "${ESPTOOL_BAUD}" chip_id 2>/dev/null \
+                    | grep "^MAC:" | head -1 | awk '{print $2}' | tr -d ':') || true
+            fi
+            if [ -n "${MAC_ID}" ]; then
+                echo "${MAC_ID}" > "${CACHED_MAC}"
+            fi
         fi
         if [ -n "${MAC_ID}" ]; then
             echo "id=${MAC_ID}"
