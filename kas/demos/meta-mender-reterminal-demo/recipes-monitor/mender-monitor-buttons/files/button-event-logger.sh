@@ -1,7 +1,7 @@
 #!/bin/sh
 # Toggle reTerminal button alerts directly to Mender server.
 # Press once → CRITICAL alert; press again → OK (clear).
-# Sends alerts directly to hosted.mender.io to avoid local API rate limits.
+# Sends alerts directly to the Mender server to avoid local API rate limits.
 
 STATE_DIR="/run/button-toggle"
 mkdir -p "$STATE_DIR"
@@ -14,7 +14,7 @@ get_mender_auth() {
         io.mender.Authentication1 \
         GetJwtToken 2>/dev/null \
         | awk '{gsub(/"/, "", $2); gsub(/"/, "", $3); print "AUTH_TOKEN=" $2 "\nSERVER_URL=" $3}')
-    SERVER_URL="https://hosted.mender.io"
+    SERVER_URL="${SERVER_URL:-https://hosted.mender.io}"
 }
 
 send_alert() {
