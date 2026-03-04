@@ -5,7 +5,6 @@ repos:
   meta-mender-community:
     layers:
       kas/demos/meta-mender-reterminal-demo:
-      kas/demos/meta-mender-raspberrypi-wifi:
   meta-mender:
     layers:
       meta-mender-commercial:
@@ -24,10 +23,7 @@ local_conf_header:
     DEMO_APP_THEME = "v1"
     DEMO_APP_VERSION = "ew2026-v1.0"
 
-    # WiFi
-    DEMO_WIFI_SSID = "YOUR_SSID"
-    DEMO_WIFI_PASSKEY = "YOUR_PASSKEY"
-    LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch commercial_mender-yocto-layer-license"
+    LICENSE_FLAGS_ACCEPTED:append = " commercial_mender-yocto-layer-license"
 
     # Mender polling intervals (short for demo responsiveness)
     MENDER_UPDATE_POLL_INTERVAL_SECONDS = "5"
@@ -67,11 +63,6 @@ local_conf_header:
         weston \
         weston-init \
         mender-demo-app \
-        wificonfig \
-        linux-firmware-rpidistro-bcm43455 \
-        kernel-module-brcmfmac \
-        kernel-module-brcmfmac-wcc \
-        wireless-regdb \
         mender-connect \
         mender-monitor \
         mender-monitor-buttons \
