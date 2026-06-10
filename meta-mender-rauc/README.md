@@ -49,6 +49,35 @@ client-only setup leaves to the integrator.
   `rauc` (`mender-artifact write module-image -T rauc`). Bump
   `MENDER_RAUC_ARTIFACT_NAME` per release so deployments are meaningful.
 
+* `recipes-mender/rauc-inventory/` — a `mender-inventory-rauc` script installed
+  at `/usr/share/mender/inventory/mender-inventory-rauc`. The Mender client runs
+  it periodically and reports its `key=value` output as device inventory. It
+  parses `rauc status --detailed --output-format=json` (via `jq`) and emits the
+  RAUC system state and, per slot, the **installed bundle version / compatible /
+  install time** — i.e. the software RAUC has installed on each A/B slot — plus
+  the booted slot and per-slot boot status, e.g.:
+
+  ```
+  rauc_compatible=qemuarm demo
+  rauc_booted=B
+  rauc_boot_primary=rootfs.1
+  rauc_slot_rootfs_1_bootname=B
+  rauc_slot_rootfs_1_state=booted
+  rauc_slot_rootfs_1_boot_status=good
+  rauc_slot_rootfs_1_bundle_version=1.0
+  rauc_slot_rootfs_1_bundle_compatible=qemuarm demo
+  rauc_slot_rootfs_1_installed=2026-06-10T19:05:01Z
+  ```
+
+  This complements the `rootfs-image.rauc.version` already reported via the
+  artifact's *provides*: that names the deployed Mender artifact, while this
+  reports the RAUC-level bundle state read live from the device.
+
+* `recipes-mender/mender/mender_%.bbappend` — removes the Mender client's stock
+  `rootfs-image` Update Module from the image. RAUC owns the rootfs A/B, so
+  `rootfs-image` (which does its own writing to `MENDER_ROOTFS_PART_A/B`) is
+  conflicting; the `single-file`, `directory` and `rauc` modules remain.
+
 ## Two runtime quirks worth knowing
 
 Each cost a build/deploy cycle to discover; they're why the layer is shaped

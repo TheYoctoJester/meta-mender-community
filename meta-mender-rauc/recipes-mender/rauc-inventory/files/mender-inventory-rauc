@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# Mender inventory script: expose RAUC status as device inventory attributes.
+#
+# The Mender client runs every executable /usr/share/mender/inventory/
+# mender-inventory-* and parses stdout as key=value lines (repeated keys become
+# lists). This reports the RAUC system state and, per slot, the installed bundle
+# version / compatible / install time -- i.e. the software RAUC has installed on
+# each A/B slot -- plus the booted slot and per-slot boot status.
+#
+# See https://docs.mender.io/client-installation/inventory
+
+set -e
+
+# Be a no-op (rather than fail inventory collection) if RAUC or jq is missing
+# or the status cannot be read.
+command -v rauc >/dev/null 2>&1 || exit 0
+command -v jq   >/dev/null 2>&1 || exit 0
+
+status=$(rauc status --detailed --output-format=json 2>/dev/null) || exit 0
+[ -n "$status" ] || exit 0
+
+printf '%s\n' "$status" | jq -r '
+  # emit "key=value" only for non-empty string values
+  def kv($k; $v): if ($v | type) == "string" and ($v | length > 0)
+                  then "\($k)=\($v)" else empty end;
+
+  kv("rauc_compatible";   .compatible),
+  kv("rauc_variant";      .variant),
+  kv("rauc_booted";       .booted),
+  kv("rauc_boot_primary"; .boot_primary),
+
+  ( .slots[] | to_entries[] |
+    (.key | gsub("[^a-zA-Z0-9_]"; "_")) as $s |
+    .value as $v |
+    kv("rauc_slot_\($s)_class";             $v.class),
+    kv("rauc_slot_\($s)_device";            $v.device),
+    kv("rauc_slot_\($s)_bootname";          $v.bootname),
+    kv("rauc_slot_\($s)_state";             $v.state),
+    kv("rauc_slot_\($s)_boot_status";       $v.boot_status),
+    kv("rauc_slot_\($s)_bundle_version";    $v.slot_status.bundle.version),
+    kv("rauc_slot_\($s)_bundle_compatible"; $v.slot_status.bundle.compatible),
+    kv("rauc_slot_\($s)_installed";         $v.slot_status.installed.timestamp)
+  )
+'
+
+exit 0
