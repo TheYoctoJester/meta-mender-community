@@ -1,0 +1,27 @@
+# Mender + UKI A/B disk layout for qemuarm64-secureboot (wrynose).
+#
+# Boot chain at runtime:
+#   QEMU -> TF-A -> U-Boot UEFI -> systemd-boot -> uki-{a,b}.efi -> kernel
+#
+# GPT layout (total ~2.37 GB):
+#   1. ESP / boot     256 MB  systemd-boot + uki-a.efi + uki-b.efi + the
+#                              kernel `Image` staged by meta-arm's machine
+#                              config via IMAGE_BOOT_FILES (unused at run
+#                              time but we leave it; 256M has plenty of
+#                              headroom; 128M filled up).
+#   2. mender-rootfsa  1024 MB rootfs slot A (populated at build)
+#   3. mender-rootfsb  1024 MB rootfs slot B (populated identically at
+#                              build so first boot from either slot works)
+#   4. mender-data       64 MB persistent /data, also bind-mounted over
+#                              /var/lib/mender by mender-uki-shim's mount
+#                              unit (so mender's state DB and agent key
+#                              survive an OTA-driven rootfs swap)
+#
+# (Single-line `part` entries: wic's ksparser uses shlex which can choke on
+#  backslash line continuations under Python 3.14.)
+
+bootloader --ptable gpt --timeout=5
+part /boot --source bootimg_efi --sourceparams="loader=${EFI_PROVIDER}" --label boot --part-name=ESP --part-type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B --align 1024 --fixed-size 256M --active --use-uuid
+part / --source rootfs --fstype=ext4 --label rootfsa --part-name=mender-rootfsa --align 1024 --fixed-size 1024M --use-uuid --exclude-path boot/
+part --source rootfs --fstype=ext4 --label rootfsb --part-name=mender-rootfsb --align 1024 --fixed-size 1024M --use-uuid --exclude-path boot/
+part /data --source rootfs --change-directory=data --fstype=ext4 --label data --part-name=mender-data --align 1024 --fixed-size 64M --use-uuid

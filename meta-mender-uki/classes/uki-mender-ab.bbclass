@@ -1,0 +1,110 @@
+# uki-mender-ab.bbclass — produce two UKIs (slot A + slot B) and stage both
+# into the image rootfs at /usr/lib/mender/ so a Mender rootfs artifact
+# carries both kernels in lockstep with the rootfs.
+#
+# The parent class (uki) builds uki-a.efi (the "main" UKI). We then run
+# ukify a second time to build uki-b.efi with a different cmdline pointing
+# at the other rootfs partition.
+
+# Slot A is the default. We override the upstream defaults from uki.bbclass
+# so that the standard do_uki produces uki-a.efi pointing at rootfsa.
+UKI_FILENAME = "uki-a.efi"
+UKI_CMDLINE = "rootwait root=PARTLABEL=mender-rootfsa console=${KERNEL_CONSOLE}"
+
+# Slot B
+UKI_FILENAME_B ?= "uki-b.efi"
+UKI_CMDLINE_B ?= "rootwait root=PARTLABEL=mender-rootfsb console=${KERNEL_CONSOLE}"
+
+inherit uki
+
+# Deploy BOTH UKIs into the ESP plus an initial loader.conf so systemd-boot
+# picks uki-a.efi as the default at first boot. (Without an explicit default,
+# systemd-boot's auto-discovery picks the alphabetically-last *.efi, i.e.
+# uki-b.efi -- not what we want for an initial-slot=A invariant.)
+IMAGE_EFI_BOOT_FILES = "\
+    ${UKI_FILENAME};EFI/Linux/${UKI_FILENAME} \
+    ${UKI_FILENAME_B};EFI/Linux/${UKI_FILENAME_B} \
+    loader.conf;loader/loader.conf \
+"
+
+# Build the slot-B UKI right after the (slot-A) standard do_uki, and stage
+# both copies into ${IMAGE_ROOTFS}/usr/lib/mender/ so Mender artifacts
+# carry the kernel.
+python do_uki_b() {
+    import os, shutil, bb.process
+
+    ukify_cmd = d.getVar('UKIFY_CMD')
+    deploy_dir_image = d.getVar('DEPLOY_DIR_IMAGE')
+
+    target_arch = d.getVar('EFI_ARCH')
+    if target_arch:
+        ukify_cmd += " --efi-arch %s" % target_arch
+    stub = "%s/linux%s.efi.stub" % (deploy_dir_image, target_arch)
+    if not os.path.exists(stub):
+        bb.fatal("uki-mender-ab: missing stub %s" % stub)
+    ukify_cmd += " --stub %s" % stub
+
+    uki_fstype = d.getVar('INITRAMFS_FSTYPES').split()[0]
+    initramfs_image = "%s-%s.%s" % (
+        d.getVar('INITRAMFS_IMAGE'), d.getVar('MACHINE'), uki_fstype)
+    ukify_cmd += " --initrd=%s" % os.path.join(deploy_dir_image, initramfs_image)
+
+    kernel_filename = d.getVar('UKI_KERNEL_FILENAME')
+    kernel = "%s/%s" % (deploy_dir_image, kernel_filename)
+    if not os.path.exists(kernel):
+        bb.fatal("uki-mender-ab: missing kernel %s" % kernel)
+    ukify_cmd += " --linux=%s" % kernel
+    kver = d.getVar('KERNEL_VERSION')
+    if kver:
+        ukify_cmd += " --uname %s" % kver
+
+    # Slot-B cmdline goes here
+    ukify_cmd += " --cmdline='%s'" % d.getVar('UKI_CMDLINE_B')
+
+    uki_devicetree = d.getVar('UKI_DEVICETREE')
+    if uki_devicetree:
+        for dtb in uki_devicetree.split():
+            dtb_path = "%s/%s" % (deploy_dir_image, os.path.basename(dtb))
+            if not os.path.exists(dtb_path):
+                bb.fatal("uki-mender-ab: missing dtb %s" % dtb_path)
+            ukify_cmd += " --devicetree %s" % dtb_path
+
+    if os.path.exists(d.getVar('UKI_CONFIG_FILE')):
+        ukify_cmd += " --config=%s" % d.getVar('UKI_CONFIG_FILE')
+
+    ukify_cmd += " --tools=%s%s/lib/systemd/tools" % (
+        d.getVar('RECIPE_SYSROOT_NATIVE'), d.getVar('prefix'))
+    ukify_cmd += " --os-release=@%s%s/lib/os-release" % (
+        d.getVar('RECIPE_SYSROOT'), d.getVar('prefix'))
+
+    key = d.getVar('UKI_SB_KEY')
+    if key:
+        ukify_cmd += " --sign-kernel --secureboot-private-key='%s'" % key
+    cert = d.getVar('UKI_SB_CERT')
+    if cert:
+        ukify_cmd += " --secureboot-certificate='%s'" % cert
+
+    out_path = os.path.join(deploy_dir_image, d.getVar('UKI_FILENAME_B'))
+    ukify_cmd += " --output=%s" % out_path
+
+    bb.debug(2, "uki-mender-ab: %s" % ukify_cmd)
+    bb.process.run(ukify_cmd, shell=True)
+
+    # Stage both UKIs into the rootfs so a Mender artifact carries them.
+    dst = "%s/usr/lib/mender" % d.getVar('IMAGE_ROOTFS')
+    os.makedirs(dst, exist_ok=True)
+    for fn in (d.getVar('UKI_FILENAME'), d.getVar('UKI_FILENAME_B')):
+        src = os.path.join(deploy_dir_image, fn)
+        if not os.path.exists(src):
+            bb.fatal("uki-mender-ab: missing UKI for staging: %s" % src)
+        shutil.copy2(src, os.path.join(dst, fn))
+
+    # Generate the initial loader.conf pointing at slot A. bootimg_efi will
+    # deploy this to /loader/loader.conf on the ESP per IMAGE_EFI_BOOT_FILES.
+    loader_conf = os.path.join(deploy_dir_image, "loader.conf")
+    with open(loader_conf, "w") as f:
+        f.write("default %s\ntimeout 3\n" % d.getVar('UKI_FILENAME'))
+}
+addtask do_uki_b after do_uki before do_deploy do_image_complete do_image_wic
+do_uki_b[depends] += "systemd-boot:do_deploy virtual/kernel:do_deploy"
+do_uki_b[dirs] = "${B}"
