@@ -37,6 +37,14 @@ Vendor-oriented:
 - meta-mender-octavo-osd32mp
 ...
 
+Integration-oriented (feature layers, not tied to a specific BSP):
+
+- meta-mender-client-only
+- meta-mender-update-modules
+- meta-mender-uki
+- meta-mender-rauc — manage a RAUC-updated A/B system from the Mender server
+  via a custom Update Module (see meta-mender-rauc/README.md)
+
 Naming of integration layers follows the upstream naming conventions with SoM
 vendor layer name having priority. The convention is:
 

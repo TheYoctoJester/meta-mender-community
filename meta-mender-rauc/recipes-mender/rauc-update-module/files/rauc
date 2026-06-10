@@ -1,0 +1,85 @@
+#!/bin/sh
+#
+# Mender Update Module "rauc": installs a RAUC bundle delivered inside a Mender
+# artifact. Mender owns deployment orchestration + the reboot; RAUC + the u-boot
+# bootscript own the A/B slot switch and the attempt-counter rollback.
+#
+# The artifact payload is a single signed *.raucb in $FILES/files/.
+# $FILES/tmp/ persists across the reboot (Mender stores the module work tree),
+# so we stash the pre-install booted slot there for verify/rollback.
+
+set -e
+
+STATE="$1"
+FILES="$2"
+PREV_SLOT_FILE="$FILES/tmp/prev_bootname"
+
+bundle_path() {
+    ls "$FILES"/files/*.raucb 2>/dev/null | head -n1
+}
+
+# rauc status json reports "booted":"<bootname>" (e.g. "A"/"B").
+booted_bootname() {
+    rauc status --output-format=json 2>/dev/null \
+        | sed -n 's/.*"booted":"\([^"]*\)".*/\1/p'
+}
+
+case "$STATE" in
+
+    NeedsArtifactReboot)
+        # RAUC switches the slot; Mender must reboot for it to take effect.
+        echo "Automatic"
+        ;;
+
+    SupportsRollback)
+        echo "Yes"
+        ;;
+
+    ArtifactInstall)
+        b=$(bundle_path)
+        [ -n "$b" ] || { echo "rauc update module: no .raucb in payload" >&2; exit 1; }
+        mkdir -p "$FILES/tmp"
+        booted_bootname > "$PREV_SLOT_FILE"
+        # Installs to the inactive slot and marks it primary for the next boot.
+        rauc install "$b"
+        ;;
+
+    ArtifactVerifyReboot)
+        # After the reboot we must be running from the *other* slot.
+        prev=$(cat "$PREV_SLOT_FILE" 2>/dev/null || true)
+        now=$(booted_bootname)
+        [ -n "$now" ] || { echo "rauc update module: cannot read booted slot" >&2; exit 1; }
+        if [ -n "$prev" ] && [ "$now" = "$prev" ]; then
+            echo "rauc update module: still on slot '$now', boot did not switch" >&2
+            exit 1
+        fi
+        ;;
+
+    ArtifactCommit)
+        # Confirm the freshly booted slot: marks it good and resets the
+        # u-boot boot-attempt counter so the switch is permanent.
+        rauc status mark-good
+        ;;
+
+    ArtifactRollback)
+        # We are booted in the new (rejected) slot; re-activate the other
+        # (previously good) slot so the upcoming rollback-reboot returns to it.
+        rauc status mark-active other || true
+        ;;
+
+    ArtifactVerifyRollback)
+        prev=$(cat "$PREV_SLOT_FILE" 2>/dev/null || true)
+        now=$(booted_bootname)
+        if [ -n "$prev" ] && [ "$now" != "$prev" ]; then
+            echo "rauc update module: rollback did not return to '$prev' (on '$now')" >&2
+            exit 1
+        fi
+        ;;
+
+    *)
+        # ArtifactReboot / ArtifactRollbackReboot are Automatic; other states
+        # (Download, *Enter/Leave, Cleanup) need no action here.
+        ;;
+esac
+
+exit 0
