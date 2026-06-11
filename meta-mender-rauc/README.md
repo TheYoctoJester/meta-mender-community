@@ -52,26 +52,37 @@ client-only setup leaves to the integrator.
 * `recipes-mender/rauc-inventory/` — a `mender-inventory-rauc` script installed
   at `/usr/share/mender/inventory/mender-inventory-rauc`. The Mender client runs
   it periodically and reports its `key=value` output as device inventory. It
-  parses `rauc status --detailed --output-format=json` (via `jq`) and emits the
-  RAUC system state and, per slot, the **installed bundle version / compatible /
-  install time** — i.e. the software RAUC has installed on each A/B slot — plus
-  the booted slot and per-slot boot status, e.g.:
+  parses `rauc status --detailed --output-format=json` (via `jq`) and emits two
+  kinds of attributes.
+
+  First, the **booted** slot's installed RAUC bundle under Mender's canonical
+  software-versioning keys — `rootfs-image.version` (the RAUC bundle version)
+  and `rootfs-image.checksum` (its sha256) — exactly the keys a native Mender
+  rootfs device reports from the rootfs-image artifact's *provides*. The Mender
+  server renders `<name>.version`/`.checksum` inventory as installed software, so
+  this makes the running RAUC bundle appear in the device **Software** tab like a
+  stock rootfs device. (These appear once a bundle has been installed on the
+  running slot; a freshly-flashed slot has no RAUC install record.)
+
+  Second, descriptive RAUC status as generic `rauc_*` inventory — the system
+  compatible/booted/primary and, per slot, bootname/state/boot-status and the
+  installed bundle version/compatible/timestamp, e.g.:
 
   ```
+  rootfs-image.version=1.0
+  rootfs-image.checksum=ef05455927267df10ca684e525b2aaad845f726bf84a95d614c522da4c091485
   rauc_compatible=qemuarm demo
   rauc_booted=B
   rauc_boot_primary=rootfs.1
-  rauc_slot_rootfs_1_bootname=B
   rauc_slot_rootfs_1_state=booted
   rauc_slot_rootfs_1_boot_status=good
   rauc_slot_rootfs_1_bundle_version=1.0
-  rauc_slot_rootfs_1_bundle_compatible=qemuarm demo
-  rauc_slot_rootfs_1_installed=2026-06-10T19:05:01Z
+  rauc_slot_rootfs_0_state=inactive
   ```
 
-  This complements the `rootfs-image.rauc.version` already reported via the
-  artifact's *provides*: that names the deployed Mender artifact, while this
-  reports the RAUC-level bundle state read live from the device.
+  This complements the `rootfs-image.rauc.version` reported via the artifact's
+  *provides* (which names the deployed Mender artifact): `rootfs-image.version`
+  here is the RAUC-level bundle version read live from the booted slot.
 
 * `recipes-mender/mender/mender_%.bbappend` — removes the Mender client's stock
   `rootfs-image` Update Module from the image. RAUC owns the rootfs A/B, so

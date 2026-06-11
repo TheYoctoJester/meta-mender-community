@@ -30,6 +30,14 @@ printf '%s\n' "$status" | jq -r '
   kv("rauc_booted";       .booted),
   kv("rauc_boot_primary"; .boot_primary),
 
+  # Booted slot installed RAUC bundle, reported under Mender canonical
+  # software-versioning keys (rootfs-image.version / .checksum) so it shows up
+  # in the device Software tab like a native Mender rootfs device. Omitted until
+  # a bundle has been installed on the running slot.
+  ( [ .slots[] | to_entries[] | .value | select(.state == "booted") ][0] ) as $b |
+  kv("rootfs-image.version";  $b.slot_status.bundle.version),
+  kv("rootfs-image.checksum"; $b.slot_status.checksum.sha256),
+
   ( .slots[] | to_entries[] |
     (.key | gsub("[^a-zA-Z0-9_]"; "_")) as $s |
     .value as $v |
