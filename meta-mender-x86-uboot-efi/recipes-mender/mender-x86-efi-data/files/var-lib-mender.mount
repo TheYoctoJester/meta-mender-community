@@ -1,0 +1,16 @@
+[Unit]
+Description=Bind /data/mender over /var/lib/mender for OTA-persistent state
+After=data.mount systemd-tmpfiles-setup.service
+Requires=data.mount
+ConditionPathExists=/data/mender
+DefaultDependencies=no
+Before=mender-authd.service mender-updated.service
+
+[Mount]
+What=/data/mender
+Where=/var/lib/mender
+Type=none
+Options=bind
+
+[Install]
+WantedBy=mender-authd.service mender-updated.service
