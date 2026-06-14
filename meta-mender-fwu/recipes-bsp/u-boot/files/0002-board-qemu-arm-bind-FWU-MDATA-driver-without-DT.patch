@@ -1,0 +1,66 @@
+From 4a3e3fd0569191c8221ff77ca74ad6a2b0789cfe Mon Sep 17 00:00:00 2001
+From: tyj <tyj@x>
+Date: Sat, 13 Jun 2026 18:04:01 +0000
+Subject: [PATCH 2/6] board/qemu-arm: bind FWU MDATA driver without DT
+
+Upstream-Status: Pending
+
+Signed-off-by: meta-mender-fwu <noreply@example.com>
+---
+ board/emulation/qemu-arm/qemu-arm.c | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/board/emulation/qemu-arm/qemu-arm.c b/board/emulation/qemu-arm/qemu-arm.c
+index 38f0ec5f..251070ec 100644
+--- a/board/emulation/qemu-arm/qemu-arm.c
++++ b/board/emulation/qemu-arm/qemu-arm.c
+@@ -5,7 +5,10 @@
+ 
+ #include <config.h>
+ #include <cpu_func.h>
++#include <asm/global_data.h>
+ #include <dm.h>
++#include <dm/device-internal.h>
++#include <dm/lists.h>
+ #include <efi.h>
+ #include <efi_loader.h>
+ #include <fdtdec.h>
+@@ -18,6 +21,8 @@
+ #include <linux/kernel.h>
+ #include <linux/sizes.h>
+ 
++DECLARE_GLOBAL_DATA_PTR;
++
+ /* GUIDs for capsule updatable firmware images */
+ #define QEMU_ARM_UBOOT_IMAGE_GUID \
+ 	EFI_GUID(0xf885b085, 0x99f8, 0x45af, 0x84, 0x7d, \
+@@ -110,6 +115,26 @@ int board_late_init(void)
+ 	 */
+ 	virtio_init();
+ 
++#if IS_ENABLED(CONFIG_FWU_MDATA_GPT_BLK)
++	/*
++	 * The upstream qemu-arm device tree does not declare a node
++	 * for the FWU MDATA driver, so bind it programmatically here.
++	 * The gpt_blk driver's fwu_get_mdata_device() falls back to
++	 * scanning UCLASS_BLK for a device carrying a pair of FWU
++	 * metadata GPT partitions when no DT phandle is present.
++	 */
++	{
++		struct udevice *fwu_dev;
++		int fwu_ret = device_bind(gd->dm_root,
++					  DM_DRIVER_GET(fwu_mdata_gpt_blk),
++					  "fwu-mdata", NULL, ofnode_null(),
++					  &fwu_dev);
++		if (fwu_ret)
++			log_warning("FWU MDATA driver bind failed: %d\n",
++				    fwu_ret);
++	}
++#endif
++
+ 	/* start usb so that usb keyboard can be used as input device */
+ 	if (CONFIG_IS_ENABLED(USB_KEYBOARD))
+ 		usb_init();
+-- 
+2.34.1
+

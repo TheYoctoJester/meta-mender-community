@@ -1,0 +1,567 @@
+From 5c6f50a2e10e4a348700c0428dfee235556b12e1 Mon Sep 17 00:00:00 2001
+From: tyj <tyj@x>
+Date: Sat, 13 Jun 2026 18:04:02 +0000
+Subject: [PATCH 4/6] dfu: add virtio backend
+
+Upstream-Status: Pending
+
+Signed-off-by: meta-mender-fwu <noreply@example.com>
+---
+ drivers/dfu/Kconfig      |   8 +
+ drivers/dfu/Makefile     |   1 +
+ drivers/dfu/dfu.c        |   3 +
+ drivers/dfu/dfu_virtio.c | 442 +++++++++++++++++++++++++++++++++++++++
+ include/dfu.h            |  25 +++
+ 5 files changed, 479 insertions(+)
+ create mode 100644 drivers/dfu/dfu_virtio.c
+
+diff --git a/drivers/dfu/Kconfig b/drivers/dfu/Kconfig
+index 2cf4289b..eb6e52f1 100644
+--- a/drivers/dfu/Kconfig
++++ b/drivers/dfu/Kconfig
+@@ -96,6 +96,14 @@ config DFU_SCSI
+ 	  used at board level to manage specific behavior
+ 	  (OTP update for example).
+ 
++config DFU_VIRTIO
++	bool "VIRTIO block back end for DFU"
++	depends on VIRTIO_BLK
++	help
++	  This option enables using DFU to read and write to virtio block
++	  devices. Required by FWU multi-bank update on boards where the
++	  storage substrate is virtio-blk (e.g. qemu-arm 'virt' machine).
++
+ config SET_DFU_ALT_INFO
+ 	bool "Dynamic set of DFU alternate information"
+ 	depends on !COMPILE_TEST
+diff --git a/drivers/dfu/Makefile b/drivers/dfu/Makefile
+index eb4ae5e2..80759f87 100644
+--- a/drivers/dfu/Makefile
++++ b/drivers/dfu/Makefile
+@@ -12,3 +12,4 @@ obj-$(CONFIG_$(PHASE_)DFU_SF) += dfu_sf.o
+ obj-$(CONFIG_$(PHASE_)DFU_WRITE_ALT) += dfu_alt.o
+ obj-$(CONFIG_$(PHASE_)DFU_VIRT) += dfu_virt.o
+ obj-$(CONFIG_$(PHASE_)DFU_SCSI) += dfu_scsi.o
++obj-$(CONFIG_$(PHASE_)DFU_VIRTIO) += dfu_virtio.o
+diff --git a/drivers/dfu/dfu.c b/drivers/dfu/dfu.c
+index eefdf44e..74d7dfd1 100644
+--- a/drivers/dfu/dfu.c
++++ b/drivers/dfu/dfu.c
+@@ -567,6 +567,9 @@ static int dfu_fill_entity(struct dfu_entity *dfu, char *s, int alt,
+ 	} else if (strcmp(interface, "scsi") == 0) {
+ 		if (dfu_fill_entity_scsi(dfu, devstr, argv, argc))
+ 			return -1;
++	} else if (strcmp(interface, "virtio") == 0) {
++		if (dfu_fill_entity_virtio(dfu, devstr, argv, argc))
++			return -1;
+ 	} else {
+ 		printf("%s: Device %s not (yet) supported!\n",
+ 		       __func__,  interface);
+diff --git a/drivers/dfu/dfu_virtio.c b/drivers/dfu/dfu_virtio.c
+new file mode 100644
+index 00000000..13562924
+--- /dev/null
++++ b/drivers/dfu/dfu_virtio.c
+@@ -0,0 +1,442 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * DFU VIRTIO backend (based on the SCSI backend).
++ *
++ * Copyright (C) 2026 meta-mender-fwu.
++ */
++
++#include <log.h>
++#include <malloc.h>
++#include <errno.h>
++#include <div64.h>
++#include <dfu.h>
++#include <ext4fs.h>
++#include <fat.h>
++#include <blk.h>
++#include <dm.h>
++#include <part.h>
++#include <command.h>
++#include <linux/printk.h>
++
++static unsigned char *dfu_file_buf;
++static u64 dfu_file_buf_len;
++static u64 dfu_file_buf_offset;
++
++#define virtio_get_blk_desc(dev) ((struct blk_desc *)dev_get_uclass_plat(dev))
++
++static int find_virtio_blk(int dev_num, struct udevice **devp)
++{
++	return blk_get_device(UCLASS_VIRTIO, dev_num, devp);
++}
++
++static int virtio_block_op(enum dfu_op op, struct dfu_entity *dfu, u64 offset,
++			   void *buf, long *len)
++{
++	struct udevice *dev;
++	u32 blk_start, blk_count, n = 0;
++	int ret;
++
++	ret = find_virtio_blk(dfu->data.virtio.dev_num, &dev);
++	if (ret < 0) {
++		pr_err("Device virtio %d - not found!", dfu->data.virtio.dev_num);
++		return -ENODEV;
++	}
++
++	/*
++	 * Work in lba_blk_size chunks.
++	 */
++	*len = ALIGN(*len, dfu->data.virtio.lba_blk_size);
++
++	blk_start = dfu->data.virtio.lba_start +
++			(u32)lldiv(offset, dfu->data.virtio.lba_blk_size);
++	blk_count = *len / dfu->data.virtio.lba_blk_size;
++	if (blk_start + blk_count >
++			dfu->data.virtio.lba_start + dfu->data.virtio.lba_size) {
++		puts("Request would exceed designated area!\n");
++		return -EINVAL;
++	}
++
++	debug("%s: %s dev: %d start: %d cnt: %d buf: 0x%p\n", __func__,
++	      op == DFU_OP_READ ? "VIRTIO READ" : "VIRTIO WRITE",
++	      dfu->data.virtio.dev_num, blk_start, blk_count, buf);
++	switch (op) {
++	case DFU_OP_READ:
++		n = blk_dread(virtio_get_blk_desc(dev), blk_start, blk_count, buf);
++		break;
++	case DFU_OP_WRITE:
++		n = blk_dwrite(virtio_get_blk_desc(dev), blk_start, blk_count, buf);
++		break;
++	default:
++		pr_err("Operation not supported\n");
++	}
++
++	if (n != blk_count) {
++		pr_err("virtio block operation failed");
++		return -EIO;
++	}
++
++	return 0;
++}
++
++static int virtio_file_op(enum dfu_op op, struct dfu_entity *dfu, u64 offset,
++			  void *buf, u64 *len)
++{
++	char dev_part_str[8];
++	int ret;
++	int fstype;
++	loff_t size = 0;
++
++	switch (dfu->layout) {
++	case DFU_FS_FAT:
++		fstype = FS_TYPE_FAT;
++		break;
++	case DFU_FS_EXT4:
++		fstype = FS_TYPE_EXT;
++		break;
++	case DFU_SKIP:
++		return 0;
++	default:
++		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
++		       dfu_get_layout(dfu->layout));
++		return -1;
++	}
++
++	snprintf(dev_part_str, sizeof(dev_part_str), "%d:%d",
++		 dfu->data.virtio.dev_num, dfu->data.virtio.part);
++
++	ret = fs_set_blk_dev("virtio", dev_part_str, fstype);
++	if (ret) {
++		puts("dfu: fs_set_blk_dev error!\n");
++		return ret;
++	}
++
++	switch (op) {
++	case DFU_OP_READ:
++		ret = fs_read(dfu->name, (size_t)buf, offset, *len, &size);
++		if (ret) {
++			puts("dfu: fs_read error!\n");
++			return ret;
++		}
++		*len = size;
++		break;
++	case DFU_OP_WRITE:
++		ret = fs_write(dfu->name, (size_t)buf, offset, *len, &size);
++		if (ret) {
++			puts("dfu: fs_write error!\n");
++			return ret;
++		}
++		break;
++	case DFU_OP_SIZE:
++		ret = fs_size(dfu->name, &size);
++		if (ret) {
++			puts("dfu: fs_size error!\n");
++			return ret;
++		}
++		*len = size;
++		break;
++	default:
++		return -1;
++	}
++
++	return ret;
++}
++
++static int virtio_file_buf_write(struct dfu_entity *dfu, u64 offset, void *buf,
++				 long *len)
++{
++	int ret = 0;
++
++	if (offset == 0) {
++		dfu_file_buf_len = 0;
++		dfu_file_buf_offset = 0;
++	}
++
++	if (dfu_file_buf_len + *len > CONFIG_SYS_DFU_MAX_FILE_SIZE)
++		*len = CONFIG_SYS_DFU_MAX_FILE_SIZE - dfu_file_buf_len;
++	memcpy(dfu_file_buf + dfu_file_buf_len, buf, *len);
++	dfu_file_buf_len += *len;
++
++	if (dfu_file_buf_len == CONFIG_SYS_DFU_MAX_FILE_SIZE) {
++		ret = virtio_file_op(DFU_OP_WRITE, dfu, dfu_file_buf_offset,
++				     dfu_file_buf, &dfu_file_buf_len);
++		dfu_file_buf_offset += dfu_file_buf_len;
++		dfu_file_buf_len = 0;
++	}
++
++	return ret;
++}
++
++static int virtio_file_buf_write_finish(struct dfu_entity *dfu)
++{
++	int ret = virtio_file_op(DFU_OP_WRITE, dfu, dfu_file_buf_offset,
++				 dfu_file_buf, &dfu_file_buf_len);
++
++	dfu_file_buf_len = 0;
++	dfu_file_buf_offset = 0;
++
++	return ret;
++}
++
++int dfu_write_medium_virtio(struct dfu_entity *dfu, u64 offset, void *buf,
++			    long *len)
++{
++	int ret = -1;
++
++	switch (dfu->layout) {
++	case DFU_RAW_ADDR:
++		ret = virtio_block_op(DFU_OP_WRITE, dfu, offset, buf, len);
++		break;
++	case DFU_FS_FAT:
++	case DFU_FS_EXT4:
++		ret = virtio_file_buf_write(dfu, offset, buf, len);
++		break;
++	case DFU_SCRIPT:
++		ret = run_command_list(buf, *len, 0);
++		break;
++	case DFU_SKIP:
++		ret = 0;
++		break;
++	default:
++		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
++		       dfu_get_layout(dfu->layout));
++	}
++
++	return ret;
++}
++
++int dfu_flush_medium_virtio(struct dfu_entity *dfu)
++{
++	int ret = 0;
++
++	switch (dfu->layout) {
++	case DFU_FS_FAT:
++	case DFU_FS_EXT4:
++		ret = virtio_file_buf_write_finish(dfu);
++		break;
++	case DFU_SCRIPT:
++		dfu_reinit_needed = true;
++		break;
++	case DFU_RAW_ADDR:
++	case DFU_SKIP:
++		break;
++	default:
++		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
++		       dfu_get_layout(dfu->layout));
++	}
++
++	return ret;
++}
++
++int dfu_get_medium_size_virtio(struct dfu_entity *dfu, u64 *size)
++{
++	int ret;
++
++	switch (dfu->layout) {
++	case DFU_RAW_ADDR:
++		*size = dfu->data.virtio.lba_size *
++			dfu->data.virtio.lba_blk_size;
++		return 0;
++	case DFU_FS_FAT:
++	case DFU_FS_EXT4:
++		ret = virtio_file_op(DFU_OP_SIZE, dfu, 0, NULL, size);
++		if (ret < 0)
++			return ret;
++		return 0;
++	case DFU_SCRIPT:
++	case DFU_SKIP:
++		return 0;
++	default:
++		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
++		       dfu_get_layout(dfu->layout));
++		return -1;
++	}
++}
++
++static int virtio_file_buf_read(struct dfu_entity *dfu, u64 offset, void *buf,
++				long *len)
++{
++	int ret;
++
++	if (offset == 0 || offset >= dfu_file_buf_offset + dfu_file_buf_len ||
++	    offset + *len < dfu_file_buf_offset) {
++		u64 file_len = CONFIG_SYS_DFU_MAX_FILE_SIZE;
++
++		ret = virtio_file_op(DFU_OP_READ, dfu, offset, dfu_file_buf,
++				     &file_len);
++		if (ret < 0)
++			return ret;
++		dfu_file_buf_len = file_len;
++		dfu_file_buf_offset = offset;
++	}
++	if (offset + *len > dfu_file_buf_offset + dfu_file_buf_len)
++		return -EINVAL;
++
++	memcpy(buf, dfu_file_buf + offset - dfu_file_buf_offset, *len);
++
++	return 0;
++}
++
++int dfu_read_medium_virtio(struct dfu_entity *dfu, u64 offset, void *buf,
++			   long *len)
++{
++	int ret = -1;
++
++	switch (dfu->layout) {
++	case DFU_RAW_ADDR:
++		ret = virtio_block_op(DFU_OP_READ, dfu, offset, buf, len);
++		break;
++	case DFU_FS_FAT:
++	case DFU_FS_EXT4:
++		ret = virtio_file_buf_read(dfu, offset, buf, len);
++		break;
++	default:
++		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
++		       dfu_get_layout(dfu->layout));
++	}
++
++	return ret;
++}
++
++void dfu_free_entity_virtio(struct dfu_entity *dfu)
++{
++	if (dfu_file_buf) {
++		free(dfu_file_buf);
++		dfu_file_buf = NULL;
++	}
++}
++
++/*
++ * @param s Parameter string containing space-separated arguments:
++ *	1st:
++ *		raw	(raw read/write)
++ *		fat	(files)
++ *		ext4	(^)
++ *		part	(partition image)
++ *	2nd and 3rd:
++ *		lba_start and lba_size, for raw write
++ *		dev_num and partno, for filesystems and part
++ */
++int dfu_fill_entity_virtio(struct dfu_entity *dfu, char *devstr, char **argv,
++			   int argc)
++{
++	const char *entity_type;
++	ssize_t second_arg;
++	ssize_t third_arg = -1;
++	struct udevice *dev;
++	struct blk_desc *blk_dev;
++	int ret;
++	char *s;
++
++	if (argc < 2) {
++		pr_err("Need at least one argument\n");
++		return -EINVAL;
++	}
++
++	dfu->data.virtio.dev_num = dectoul(devstr, &s);
++	if (*s)
++		return -EINVAL;
++
++	entity_type = argv[0];
++	second_arg = simple_strtol(argv[1], &s, 0);
++	if (*s)
++		return -EINVAL;
++	if (argc >= 3) {
++		third_arg = simple_strtoul(argv[2], &s, 0);
++		if (*s)
++			return -EINVAL;
++	}
++
++	ret = find_virtio_blk(dfu->data.virtio.dev_num, &dev);
++	if (ret < 0) {
++		pr_err("Couldn't find virtio device no. %d.\n",
++		       dfu->data.virtio.dev_num);
++		return -ENODEV;
++	}
++
++	blk_dev = virtio_get_blk_desc(dev);
++	if (!blk_dev) {
++		pr_err("Couldn't get block device for virtio device no. %d.\n",
++		       dfu->data.virtio.dev_num);
++		return -ENODEV;
++	}
++
++	if (!strcmp(entity_type, "raw")) {
++		if (third_arg < 0) {
++			pr_err("raw requires two arguments\n");
++			return -EINVAL;
++		}
++		dfu->layout = DFU_RAW_ADDR;
++		dfu->data.virtio.lba_start = second_arg;
++		dfu->data.virtio.lba_size = third_arg;
++		dfu->data.virtio.lba_blk_size = blk_dev->blksz;
++
++		if (third_arg == 0)
++			dfu->data.virtio.lba_size = blk_dev->lba;
++
++	} else if (!strcmp(entity_type, "part")) {
++		/*
++		 * Syntax: "part DEV PARTNUM" -- matches the MMC backend
++		 * convention (and what FWU's per-image partition lookup
++		 * expects when matching dfu->data.virtio.part).
++		 */
++		struct disk_partition partinfo;
++		int vpart;
++
++		if (third_arg < 0) {
++			pr_err("part requires two arguments (dev partnum)\n");
++			return -EINVAL;
++		}
++		vpart = third_arg;
++
++		if (part_get_info(blk_dev, vpart, &partinfo) != 0) {
++			pr_err("Couldn't find part #%d on virtio device #%d\n",
++			       vpart, dfu->data.virtio.dev_num);
++			return -ENODEV;
++		}
++
++		dfu->layout = DFU_RAW_ADDR;
++		dfu->data.virtio.lba_start = partinfo.start;
++		dfu->data.virtio.lba_size = partinfo.size;
++		dfu->data.virtio.lba_blk_size = partinfo.blksz;
++	} else if (!strcmp(entity_type, "fat")) {
++		dfu->layout = DFU_FS_FAT;
++	} else if (!strcmp(entity_type, "ext4")) {
++		dfu->layout = DFU_FS_EXT4;
++	} else if (!strcmp(entity_type, "skip")) {
++		dfu->layout = DFU_SKIP;
++	} else if (!strcmp(entity_type, "script")) {
++		dfu->layout = DFU_SCRIPT;
++	} else {
++		pr_err("Memory layout (%s) not supported!\n", entity_type);
++		return -ENODEV;
++	}
++
++	/*
++	 * For non-raw entries, record dev/part for filesystem ops and
++	 * for FWU's per-partition matching of DFU_DEV_VIRTIO entries.
++	 * "part DEV PARTNUM" form: second_arg = DEV, third_arg = PARTNUM.
++	 */
++	if (strcmp(entity_type, "raw")) {
++		dfu->data.virtio.part = third_arg;
++	}
++
++	dfu->dev_type = DFU_DEV_VIRTIO;
++	dfu->get_medium_size = dfu_get_medium_size_virtio;
++	dfu->read_medium = dfu_read_medium_virtio;
++	dfu->write_medium = dfu_write_medium_virtio;
++	dfu->flush_medium = dfu_flush_medium_virtio;
++	dfu->inited = 0;
++	dfu->free_entity = dfu_free_entity_virtio;
++
++	if (!dfu_file_buf) {
++		dfu_file_buf = memalign(CONFIG_SYS_CACHELINE_SIZE,
++					CONFIG_SYS_DFU_MAX_FILE_SIZE);
++		if (!dfu_file_buf) {
++			pr_err("Could not memalign 0x%x bytes\n",
++			       CONFIG_SYS_DFU_MAX_FILE_SIZE);
++			return -ENOMEM;
++		}
++	}
++
++	return 0;
++}
+diff --git a/include/dfu.h b/include/dfu.h
+index 80593a90..7b17fdbf 100644
+--- a/include/dfu.h
++++ b/include/dfu.h
+@@ -25,6 +25,7 @@ enum dfu_device_type {
+ 	DFU_DEV_MTD,
+ 	DFU_DEV_VIRT,
+ 	DFU_DEV_SCSI,
++	DFU_DEV_VIRTIO,
+ };
+ 
+ enum dfu_layout {
+@@ -113,6 +114,17 @@ struct scsi_internal_data {
+ 	unsigned int part;
+ };
+ 
++struct virtio_internal_data {
++	int dev_num;
++
++	/* RAW programming */
++	unsigned int lba_start;
++	unsigned int lba_size;
++	unsigned int lba_blk_size;
++
++	unsigned int part;
++};
++
+ #if defined(CONFIG_DFU_NAME_MAX_SIZE)
+ #define DFU_NAME_SIZE			CONFIG_DFU_NAME_MAX_SIZE
+ #else
+@@ -141,6 +153,7 @@ struct dfu_entity {
+ 		struct sf_internal_data sf;
+ 		struct virt_internal_data virt;
+ 		struct scsi_internal_data scsi;
++		struct virtio_internal_data virtio;
+ 	} data;
+ 
+ 	int (*get_medium_size)(struct dfu_entity *dfu, u64 *size);
+@@ -542,6 +555,18 @@ static inline int dfu_fill_entity_scsi(struct dfu_entity *dfu, char *devstr,
+ }
+ #endif
+ 
++#if CONFIG_IS_ENABLED(DFU_VIRTIO)
++int dfu_fill_entity_virtio(struct dfu_entity *dfu, char *devstr,
++			   char **argv, int argc);
++#else
++static inline int dfu_fill_entity_virtio(struct dfu_entity *dfu, char *devstr,
++					 char **argv, int argc)
++{
++	puts("VIRTIO support not available!\n");
++	return -1;
++}
++#endif
++
+ extern bool dfu_reinit_needed;
+ extern bool dfu_alt_info_changed;
+ 
+-- 
+2.34.1
+

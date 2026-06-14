@@ -1,0 +1,125 @@
+From e221a4b281a3eee1b2bd0ebe5d8adbbe84c6d7e0 Mon Sep 17 00:00:00 2001
+From: tyj <tyj@x>
+Date: Sat, 13 Jun 2026 18:04:02 +0000
+Subject: [PATCH 5/6] board/qemu-arm: FWU dfu_string and virtio alt_num
+
+Upstream-Status: Pending
+
+Signed-off-by: meta-mender-fwu <noreply@example.com>
+---
+ board/emulation/qemu-arm/qemu-arm.c | 85 +++++++++++++++++++++++++++++
+ 1 file changed, 85 insertions(+)
+
+diff --git a/board/emulation/qemu-arm/qemu-arm.c b/board/emulation/qemu-arm/qemu-arm.c
+index ba0bdae8..40e6d613 100644
+--- a/board/emulation/qemu-arm/qemu-arm.c
++++ b/board/emulation/qemu-arm/qemu-arm.c
+@@ -7,6 +7,10 @@
+ #include <cpu_func.h>
+ #include <asm/global_data.h>
+ #include <dm.h>
++#include <blk.h>
++#include <dfu.h>
++#include <fwu.h>
++#include <part.h>
+ #include <dm/device-internal.h>
+ #include <dm/lists.h>
+ #include <efi.h>
+@@ -76,13 +80,94 @@ struct efi_fw_image fw_images[] = {
+ #endif
+ };
+ 
++#if IS_ENABLED(CONFIG_FWU_MULTI_BANK_UPDATE)
++/*
++ * dfu_alt_info entries for the four FWU image partitions on the
++ * virtio-blk OS disk. "part DEV PARTNUM" selects a whole GPT
++ * partition for raw write -- lba_start/lba_size come from the
++ * partition table at DFU init time.
++ *
++ * Partition numbers below MUST agree with meta-mender-fwu's wic layout
++ * (qemuarm64-fwu.wks.in): p4 = bank0-kernel, p5 = bank0-rootfs,
++ * p6 = bank1-kernel, p7 = bank1-rootfs.
++ */
++#define QEMU_ARM_FWU_DFU_STRING \
++	"virtio 0=" \
++	"bank0-kernel part 0 4;" \
++	"bank0-rootfs part 0 5;" \
++	"bank1-kernel part 0 6;" \
++	"bank1-rootfs part 0 7"
++#endif
++
+ struct efi_capsule_update_info update_info = {
+ 	.num_images = ARRAY_SIZE(fw_images),
+ 	.images = fw_images,
++#if IS_ENABLED(CONFIG_FWU_MULTI_BANK_UPDATE)
++	.dfu_string = QEMU_ARM_FWU_DFU_STRING,
++#endif
+ };
+ 
+ #endif /* EFI_HAVE_CAPSULE_SUPPORT */
+ 
++#if IS_ENABLED(CONFIG_FWU_MULTI_BANK_UPDATE) && IS_ENABLED(CONFIG_FWU_MDATA_GPT_BLK)
++/*
++ * The weak fwu_plat_get_alt_num() in lib/fwu_updates/fwu_gpt.c hardcodes
++ * DFU_DEV_MMC. Override it to look up the DFU alt number on the virtio
++ * backend instead. Algorithm is the same as the weak default --
++ * find the GPT partition whose unique GUID matches image_guid, then
++ * walk the DFU entities for one of type DFU_DEV_VIRTIO whose part
++ * number matches.
++ */
++int fwu_plat_get_alt_num(struct udevice *dev, efi_guid_t *image_guid,
++			 u8 *alt_num)
++{
++	struct fwu_mdata_gpt_blk_priv *priv = dev_get_priv(dev);
++	struct blk_desc *desc = dev_get_uclass_plat(priv->blk_dev);
++	struct disk_partition info;
++	efi_guid_t part_guid;
++	struct dfu_entity *dfu;
++	int i, part = -1, ret;
++
++	for (i = 1; i < MAX_SEARCH_PARTITIONS; i++) {
++		if (part_get_info(desc, i, &info))
++			continue;
++		if (uuid_str_to_bin(info.uuid, part_guid.b,
++				    UUID_STR_FORMAT_GUID))
++			continue;
++		if (!guidcmp(&part_guid, image_guid)) {
++			part = i;
++			break;
++		}
++	}
++
++	if (part < 0) {
++		log_err("No partition matching image_guid %pUs\n", image_guid);
++		return -ENOENT;
++	}
++
++	ret = dfu_init_env_entities(NULL, NULL);
++	if (ret)
++		goto out;
++
++	ret = -ENOENT;
++	for (i = 0; (dfu = dfu_get_entity(i)); i++) {
++		if (dfu->dev_type != DFU_DEV_VIRTIO)
++			continue;
++		if (dfu->data.virtio.dev_num != desc->devnum)
++			continue;
++		if (dfu->data.virtio.part == (unsigned int)part) {
++			*alt_num = dfu->alt;
++			ret = 0;
++			break;
++		}
++	}
++
++out:
++	dfu_free_entities();
++	return ret;
++}
++#endif
++
+ static struct mm_region qemu_arm64_mem_map[] = {
+ 	{
+ 		/* Flash */
+-- 
+2.34.1
+

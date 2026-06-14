@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+# Helper for reading and writing FWU Multi Bank Update v1 metadata,
+# the only format supported by U-Boot v2024.01 (scarthgap).
+#
+# Layout (from include/fwu_mdata.h in U-Boot v2024.01, with our build's
+# CONFIG_FWU_NUM_BANKS=2 and CONFIG_FWU_NUM_IMAGES_PER_BANK=2):
+#
+#   header (16 bytes):
+#     u32 crc32                       // covers all bytes after this field
+#     u32 version                     // == 1
+#     u32 active_index
+#     u32 previous_active_index
+#
+#   img_entry[num_images] (each 32 + num_banks*24 bytes):
+#     efi_guid image_type_uuid        // 16 bytes
+#     efi_guid location_uuid          // 16 bytes
+#     img_bank_info[num_banks]:       // 24 bytes each
+#       efi_guid image_uuid           // 16 bytes
+#       u32 accepted
+#       u32 reserved
+#
+# For 2 banks * 2 images: total size = 16 + 2 * (32 + 2*24) = 176 bytes.
+# efi_guid bytes use the mixed-endian Microsoft GUID layout, which
+# matches Python uuid.UUID(...).bytes_le.
+#
+# Used both at build time (by fwu-mdata-init.bb to seed the initial
+# metadata) and at runtime on the target (by the rootfs-image-fwu
+# Mender update module to flip the active bank during a deployment).
+
+import argparse
+import binascii
+import struct
+import sys
+import uuid
+
+VERSION = 1
+NUM_BANKS = 2
+NUM_IMAGES = 2
+
+HEADER_FMT = "<IIII"            # crc32, version, active, prev_active
+HEADER_SIZE = struct.calcsize(HEADER_FMT)
+BANK_INFO_FMT = "<II"           # accepted, reserved (preceded by 16-byte GUID)
+BANK_INFO_SIZE = 16 + struct.calcsize(BANK_INFO_FMT)
+IMG_ENTRY_HEADER_SIZE = 32       # image_type_uuid + location_uuid
+IMG_ENTRY_SIZE = IMG_ENTRY_HEADER_SIZE + NUM_BANKS * BANK_INFO_SIZE
+MDATA_SIZE = HEADER_SIZE + NUM_IMAGES * IMG_ENTRY_SIZE  # 176
+
+
+def guid_bytes(u):
+    return uuid.UUID(u).bytes_le
+
+
+def serialize(active_index, previous_active_index, images):
+    """images: list of dicts with keys image_type_uuid, location_uuid,
+       image_uuids (per-bank), accepted (per-bank, 0 or 1)."""
+    assert len(images) == NUM_IMAGES
+    buf = bytearray()
+    buf += struct.pack(HEADER_FMT, 0, VERSION, active_index, previous_active_index)
+    for img in images:
+        assert len(img["image_uuids"]) == NUM_BANKS
+        assert len(img["accepted"]) == NUM_BANKS
+        buf += guid_bytes(img["image_type_uuid"])
+        buf += guid_bytes(img["location_uuid"])
+        for b in range(NUM_BANKS):
+            buf += guid_bytes(img["image_uuids"][b])
+            buf += struct.pack(BANK_INFO_FMT, img["accepted"][b], 0)
+    assert len(buf) == MDATA_SIZE, f"size {len(buf)} != expected {MDATA_SIZE}"
+    crc = binascii.crc32(bytes(buf[4:])) & 0xffffffff
+    struct.pack_into("<I", buf, 0, crc)
+    return bytes(buf)
+
+
+def parse(blob):
+    assert len(blob) >= MDATA_SIZE
+    crc, version, active, prev_active = struct.unpack_from(HEADER_FMT, blob, 0)
+    images = []
+    off = HEADER_SIZE
+    for _ in range(NUM_IMAGES):
+        image_type = uuid.UUID(bytes_le=bytes(blob[off:off+16]))
+        location = uuid.UUID(bytes_le=bytes(blob[off+16:off+32]))
+        off2 = off + 32
+        image_uuids = []
+        accepted = []
+        for _b in range(NUM_BANKS):
+            image_uuids.append(uuid.UUID(bytes_le=bytes(blob[off2:off2+16])))
+            acc, _res = struct.unpack_from(BANK_INFO_FMT, blob, off2 + 16)
+            accepted.append(acc)
+            off2 += BANK_INFO_SIZE
+        images.append(dict(
+            image_type_uuid=str(image_type),
+            location_uuid=str(location),
+            image_uuids=[str(u) for u in image_uuids],
+            accepted=accepted,
+        ))
+        off += IMG_ENTRY_SIZE
+    return dict(crc=crc, version=version, active=active,
+                previous_active=prev_active, images=images)
+
+
+def read_blob(path):
+    with open(path, "rb") as f:
+        return f.read(MDATA_SIZE)
+
+
+def write_blob(path, blob):
+    with open(path, "r+b") as f:
+        f.seek(0)
+        f.write(blob)
+        f.flush()
+
+
+def reserialize(parsed, active_index=None, prev_active=None, accepted_override=None):
+    if active_index is None:
+        active_index = parsed["active"]
+    if prev_active is None:
+        prev_active = parsed["previous_active"]
+    images = []
+    for i, img in enumerate(parsed["images"]):
+        accepted = list(img["accepted"])
+        if accepted_override is not None:
+            accepted = accepted_override(i, accepted)
+        images.append(dict(
+            image_type_uuid=img["image_type_uuid"],
+            location_uuid=img["location_uuid"],
+            image_uuids=img["image_uuids"],
+            accepted=accepted,
+        ))
+    return serialize(active_index, prev_active, images)
+
+
+def cmd_generate_initial(args):
+    images = [
+        dict(
+            image_type_uuid=args.kernel_type_uuid,
+            location_uuid="00000000-0000-0000-0000-000000000000",
+            image_uuids=[args.bank0_kernel_uuid, args.bank1_kernel_uuid],
+            accepted=[1, 0],
+        ),
+        dict(
+            image_type_uuid=args.rootfs_type_uuid,
+            location_uuid="00000000-0000-0000-0000-000000000000",
+            image_uuids=[args.bank0_rootfs_uuid, args.bank1_rootfs_uuid],
+            accepted=[1, 0],
+        ),
+    ]
+    blob = serialize(active_index=0, previous_active_index=0, images=images)
+    with open(args.output, "wb") as f:
+        f.write(blob)
+
+
+def cmd_show(args):
+    parsed = parse(read_blob(args.device))
+    print(f"version={parsed['version']} active={parsed['active']} "
+          f"previous_active={parsed['previous_active']} crc=0x{parsed['crc']:08x}")
+    for i, img in enumerate(parsed["images"]):
+        print(f"  image[{i}] type={img['image_type_uuid']}")
+        for b in range(NUM_BANKS):
+            print(f"    bank{b}: uuid={img['image_uuids'][b]} accepted={img['accepted'][b]}")
+
+
+def cmd_get_active(args):
+    print(parse(read_blob(args.device))["active"])
+
+
+def cmd_get_previous(args):
+    print(parse(read_blob(args.device))["previous_active"])
+
+
+def cmd_set_active(args):
+    parsed = parse(read_blob(args.device))
+    cur = parsed["active"]
+    new = args.index
+    if cur == new:
+        return
+    blob = reserialize(
+        parsed,
+        active_index=new,
+        prev_active=cur,
+        accepted_override=lambda _i, acc: [1 if b != new else 0 for b in range(NUM_BANKS)],
+    )
+    # The new bank starts in "trial" state — accepted[new]=0; other
+    # banks keep their accepted=1 so a fallback to them is possible.
+    write_blob(args.device, blob)
+
+
+def cmd_accept(args):
+    parsed = parse(read_blob(args.device))
+    active = parsed["active"]
+    blob = reserialize(
+        parsed,
+        accepted_override=lambda _i, acc: [1 if b == active else acc[b] for b in range(NUM_BANKS)],
+    )
+    write_blob(args.device, blob)
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="fwu-mdata-tool")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    g = sub.add_parser("generate-initial", help="write fresh metadata to a file")
+    g.add_argument("--output", required=True)
+    g.add_argument("--kernel-type-uuid", required=True)
+    g.add_argument("--rootfs-type-uuid", required=True)
+    g.add_argument("--bank0-kernel-uuid", required=True)
+    g.add_argument("--bank0-rootfs-uuid", required=True)
+    g.add_argument("--bank1-kernel-uuid", required=True)
+    g.add_argument("--bank1-rootfs-uuid", required=True)
+    g.set_defaults(func=cmd_generate_initial)
+
+    s = sub.add_parser("show", help="dump human-readable view of metadata")
+    s.add_argument("device")
+    s.set_defaults(func=cmd_show)
+
+    for name, fn in [("get-active", cmd_get_active), ("get-previous", cmd_get_previous)]:
+        p = sub.add_parser(name)
+        p.add_argument("device")
+        p.set_defaults(func=fn)
+
+    sa = sub.add_parser("set-active", help="set new active bank; record previous; "
+                                           "mark new bank as trial (accepted=0)")
+    sa.add_argument("device")
+    sa.add_argument("index", type=int)
+    sa.set_defaults(func=cmd_set_active)
+
+    ac = sub.add_parser("accept", help="mark currently active bank's images as accepted")
+    ac.add_argument("device")
+    ac.set_defaults(func=cmd_accept)
+
+    args = ap.parse_args(argv[1:])
+    args.func(args)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

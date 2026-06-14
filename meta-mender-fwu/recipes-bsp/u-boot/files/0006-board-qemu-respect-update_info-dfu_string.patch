@@ -1,0 +1,42 @@
+From a0cfd13120abfd052ff37d21039a897993924a35 Mon Sep 17 00:00:00 2001
+From: tyj <tyj@x>
+Date: Sat, 13 Jun 2026 18:04:02 +0000
+Subject: [PATCH 6/6] board/qemu: respect update_info dfu_string
+
+Upstream-Status: Pending
+
+Signed-off-by: meta-mender-fwu <noreply@example.com>
+---
+ board/emulation/common/qemu_dfu.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/board/emulation/common/qemu_dfu.c b/board/emulation/common/qemu_dfu.c
+index 8a59f5ad..52ffe1f7 100644
+--- a/board/emulation/common/qemu_dfu.c
++++ b/board/emulation/common/qemu_dfu.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <dfu.h>
++#include <efi_loader.h>
+ #include <env.h>
+ #include <memalign.h>
+ #include <mtd.h>
+@@ -48,6 +49,14 @@ void set_dfu_alt_info(char *interface, char *devstr)
+ 	    env_get("dfu_alt_info"))
+ 		return;
+ 
++	/* If the board populated update_info.dfu_string (FWU multi-bank
++	 * update case), prefer that over the MTD auto-scan. */
++	if (update_info.dfu_string) {
++		env_set("dfu_alt_info", update_info.dfu_string);
++		printf("dfu_alt_info set\n");
++		return;
++	}
++
+ 	memset(buf, 0, DFU_ALT_BUF_LEN);
+ 
+ 	/*
+-- 
+2.34.1
+

@@ -1,0 +1,225 @@
+#!/bin/bash
+# Mender Update Module: rootfs-image-fwu
+#
+# Deploys a rootfs update by dropping a UEFI capsule into the ESP and
+# letting U-Boot's FWU multi-bank-update agent apply it on the next
+# boot. Replaces the original direct-dd-to-bank-partition variant.
+#
+# Update payload contract: the Mender Artifact carries a single file
+# that is already a UEFI capsule (built with mkeficapsule, wrapping the
+# rootfs.ext4 against FWU_ROOTFS_IMAGE_TYPE_UUID). See ../make-artifact.sh.
+#
+# Flow:
+#
+#   ArtifactInstall  -- copy the capsule into /boot/efi/EFI/UpdateCapsule/
+#   (mender reboots, NeedsArtifactReboot = Automatic)
+#   U-Boot capsule scan picks up the file, FMP routes it via FWU to
+#   the inactive bank, dfu_virtio writes it, FWU metadata is flipped,
+#   reboot, Linux comes up on the new bank.
+#   ArtifactVerifyReboot -- assert we're now running on the bank the
+#                            FWU metadata says is active.
+#   ArtifactCommit   -- no-op (FWU V1 has no per-image accept flag; the
+#                       built-in CONFIG_FWU_TRIAL_STATE_CNT mechanism
+#                       handles the trial->accepted transition).
+#   ArtifactRollback -- flip FWU metadata's active_index back via
+#                       yafwumdata. The capsule already applied at
+#                       reboot time, so there's nothing on the ESP to
+#                       undo -- only the metadata pointer.
+#
+# Boot-entry prerequisite:
+#
+#   U-Boot's capsule-on-disk scan locates the ESP via the EFI boot
+#   manager (BootNext/BootOrder). On a fresh device that table is
+#   empty and capsules are silently skipped. The bootloader installer
+#   is expected to seed an entry once at provisioning, e.g.
+#
+#       efidebug boot add -b 0001 fwu-test virtio 0:1 /boot.scr.uimg
+#       efidebug boot order 0001
+#
+#   ArtifactInstall fails fast if no entry exists, so a missing
+#   provisioning step shows up as a deploy error rather than a silent
+#   "everything looked fine but nothing happened" reboot.
+#
+# Module API: see https://docs.mender.io/artifact-creation/create-a-custom-update-module
+# Invocation: rootfs-image-fwu <state> <file_dir>
+
+set -eu
+
+STATE="$1"
+FILES_DIR="$2"
+
+ESP_MOUNT="/boot/efi"
+CAPSULE_DIR="${ESP_MOUNT}/EFI/UpdateCapsule"
+
+# V1 FWU metadata does not encode the layout (V2 added that), so any
+# yafwumdata call that needs to walk per-image fields must be told the
+# layout explicitly. These match U-Boot's CONFIG_FWU_NUM_BANKS and
+# CONFIG_FWU_NUM_IMAGES_PER_BANK in meta-mender-fwu/recipes-bsp/u-boot/
+# files/fwu.cfg. Without `-B`/`-I`, num_images defaults to 0 and the
+# per-image accept loop in fwumdata_set_bank_state() silently runs
+# zero iterations -- yafwumdata still exits 0, but no bytes change.
+YAFWU_LAYOUT="-B 2 -I 2"
+
+log() { echo "rootfs-image-fwu: $*"; }
+die() { log "ERROR: $*" >&2; exit 1; }
+
+rootfs_for_bank() {
+    case "$1" in
+        0) echo "/dev/disk/by-partlabel/bank0-rootfs" ;;
+        1) echo "/dev/disk/by-partlabel/bank1-rootfs" ;;
+        *) die "invalid bank index '$1'" ;;
+    esac
+}
+
+active_bank() {
+    # yafwumdata -l output is:
+    #   FWU Metadata:
+    #           Version:            1
+    #           Active Index:       0
+    #           Previous Index:     0
+    # (note: leading whitespace, capitalised key, multiple spaces.)
+    yafwumdata -l 2>/dev/null | awk '/Active Index:/ {print $NF; exit}'
+}
+
+previous_bank() {
+    yafwumdata -l 2>/dev/null | awk '/Previous Index:/ {print $NF; exit}'
+}
+
+ensure_esp_mounted() {
+    if mountpoint -q "${ESP_MOUNT}"; then return; fi
+    mkdir -p "${ESP_MOUNT}"
+    mount /dev/disk/by-partlabel/esp "${ESP_MOUNT}" \
+        || die "cannot mount ESP at ${ESP_MOUNT}"
+}
+
+ensure_boot_entry() {
+    # The capsule scan needs BootNext/BootOrder to identify the ESP.
+    # We can't add an entry from userspace (U-Boot has no runtime
+    # SetVariable), so just verify one is already in place.
+    if [ ! -d /sys/firmware/efi ]; then
+        die "/sys/firmware/efi not present -- kernel booted without UEFI runtime (booti, not bootefi?)"
+    fi
+    # SysVinit doesn't auto-mount efivarfs; do it here so the listing
+    # below sees the actual variables U-Boot's runtime is exposing.
+    if ! mountpoint -q /sys/firmware/efi/efivars; then
+        mkdir -p /sys/firmware/efi/efivars
+        mount -t efivarfs none /sys/firmware/efi/efivars \
+            || die "failed to mount efivarfs at /sys/firmware/efi/efivars"
+    fi
+    if ! ls /sys/firmware/efi/efivars/BootOrder-* >/dev/null 2>&1; then
+        die "no BootOrder EFI variable -- the bootloader installer must run 'efidebug boot add' + 'efidebug boot order' once at provisioning so U-Boot's capsule-on-disk scan can find the ESP"
+    fi
+}
+
+case "$STATE" in
+    NeedsArtifactReboot)
+        echo "Automatic"
+        ;;
+
+    SupportsRollback)
+        echo "Yes"
+        ;;
+
+    ArtifactInstall)
+        payload=$(ls "$FILES_DIR"/files/* 2>/dev/null | head -n 1)
+        [ -n "$payload" ] || die "no payload in $FILES_DIR/files"
+
+        # We could spot-check the capsule header here, but the busybox
+        # rootfs has neither xxd nor hexdump, and U-Boot itself
+        # rejects malformed capsules anyway. Trust the producer.
+
+        ensure_boot_entry
+        ensure_esp_mounted
+        mkdir -p "${CAPSULE_DIR}"
+
+        # Use a stable name so a re-deploy overwrites cleanly. U-Boot
+        # deletes the capsule after applying, so old files don't pile up.
+        target="${CAPSULE_DIR}/mender-rootfs.cap"
+        log "writing $(basename "$payload") ($(stat -c %s "$payload") bytes) -> $target"
+        cp "$payload" "$target"
+        sync
+        log "capsule staged; next boot will apply it via FWU"
+        ;;
+
+    ArtifactReboot)
+        # NeedsArtifactReboot returned Automatic, so mender-client
+        # handles the reboot itself; this state is effectively a
+        # last-chance hook before the reboot fires. Nothing to do --
+        # the capsule is already on the ESP.
+        :
+        ;;
+
+    ArtifactVerifyReboot)
+        # After the post-update reboot, the FWU agent has flipped
+        # active_index to the new bank and our boot.cmd loaded the
+        # kernel from there. Confirm that's what we're actually running.
+        active=$(active_bank)
+        [ -n "${active:-}" ] || die "could not read FWU metadata via yafwumdata"
+        expected_dev=$(readlink -f "$(rootfs_for_bank "$active")")
+        actual_dev=$(readlink -f "$(findmnt -n -o SOURCE /)")
+        if [ "$actual_dev" != "$expected_dev" ]; then
+            die "post-reboot bank mismatch: running on $actual_dev, FWU says active=$active ($expected_dev)"
+        fi
+        log "running on bank $active as expected"
+        ;;
+
+    ArtifactCommit)
+        # Mark the currently-active bank accepted. Without this the
+        # bank stays in trial state until U-Boot's CONFIG_FWU_TRIAL
+        # _STATE_CNT countdown elapses; in the meantime FWU rejects
+        # the next capsule with "FWU checks failed" because there is
+        # already an unaccepted trial bank in play.
+        #
+        # V1 has no V2-style bank_state[] array; yafwumdata -s for V1
+        # sets the per-image `accepted` byte on every image in the
+        # bank instead (see the libfwumdata 0001-set-bank-state-v1-
+        # accept patch).
+        active=$(active_bank)
+        [ -n "${active:-}" ] || die "could not read FWU metadata via yafwumdata"
+        log "marking bank $active accepted"
+        # shellcheck disable=SC2086 # intentional word-split for the layout args
+        yafwumdata $YAFWU_LAYOUT -s "$active" accepted \
+            || die "failed to set bank $active accepted (yafwumdata exit $?)"
+        ;;
+
+    ArtifactRollback)
+        # Two cases:
+        #   (a) ArtifactInstall failed before the capsule was even
+        #       written. The on-disk state is unchanged; nothing to
+        #       undo. yafwumdata may still report previous_active ==
+        #       active (the pristine state), so don't treat that as
+        #       an error.
+        #   (b) The capsule applied at reboot and FWU swapped banks.
+        #       Flip active_index back to previous_active_index.
+        prev=$(previous_bank)
+        cur=$(active_bank)
+        if [ -z "${prev:-}" ] || [ "$prev" = "$cur" ]; then
+            log "rollback: nothing to revert (active=$cur, prev=${prev:-unset})"
+            exit 0
+        fi
+        log "rollback: flipping active $cur -> $prev"
+        yafwumdata -a "$prev" -p "$cur"
+        ;;
+
+    ArtifactRollbackReboot)
+        :
+        ;;
+
+    ArtifactVerifyRollbackReboot)
+        active=$(active_bank)
+        expected_dev=$(readlink -f "$(rootfs_for_bank "$active")")
+        actual_dev=$(readlink -f "$(findmnt -n -o SOURCE /)")
+        if [ "$actual_dev" != "$expected_dev" ]; then
+            die "post-rollback bank mismatch: running on $actual_dev, FWU says active=$active ($expected_dev)"
+        fi
+        log "rolled back to bank $active"
+        ;;
+
+    ArtifactFailure|Cleanup|Download)
+        :
+        ;;
+
+    *)
+        :
+        ;;
+esac

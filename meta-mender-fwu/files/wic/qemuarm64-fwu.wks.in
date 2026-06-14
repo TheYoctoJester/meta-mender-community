@@ -1,0 +1,41 @@
+# GPT layout for the FWU Multi Bank Update demo on qemuarm64-secureboot.
+#
+# Layout — the GPT partition name (visible via /dev/disk/by-partlabel/)
+# is set by --label for filesystem partitions and by --part-name for
+# raw partitions. Names match what rootfs-image-fwu and boot.cmd
+# expect.
+#
+#   p1: esp                 FAT32 ESP — boot.scr.uimg, capsule drops
+#   p2: fwu-mdata-pri       raw 64K  — FWU v1 metadata, type FWU_MDATA_TYPE_UUID
+#   p3: fwu-mdata-sec       raw 64K  — FWU v1 metadata, type FWU_MDATA_TYPE_UUID
+#   p4: bank0-kernel        raw 32M  — kernel image
+#   p5: bank0-rootfs        ext4 512M
+#   p6: bank1-kernel        raw 32M  — copy of bank0-kernel at first
+#   p7: bank1-rootfs        ext4 512M — copy of bank0-rootfs at first
+#   p8: data                ext4 1536M — persistent /data, holds
+#                                          /data/mender (the symlink
+#                                          target of /var/lib/mender)
+#                                          plus future persistent data
+#
+# All part directives must be on a single line (no \-continuation).
+# Raw partitions use --fstype=none + --part-name so wic neither
+# applies a FAT label (which has an 11-char limit) nor leaves the
+# GPT partition name at the default "primary".
+
+bootloader --ptable gpt --timeout=5 --append="rootwait console=ttyAMA0,38400 earlycon"
+
+part esp --source bootimg-partition --fstype=vfat --label esp --align 1024 --use-uuid --part-type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B --size 1024M
+
+part fwu-mdata-pri --source rawcopy --sourceparams="file=fwu-mdata.bin" --fstype=none --part-name=fwu-mdata-pri --part-type=${FWU_MDATA_TYPE_UUID} --fixed-size 64K --align 1024
+
+part fwu-mdata-sec --source rawcopy --sourceparams="file=fwu-mdata.bin" --fstype=none --part-name=fwu-mdata-sec --part-type=${FWU_MDATA_TYPE_UUID} --fixed-size 64K --align 1024
+
+part bank0-kernel --source rawcopy --sourceparams="file=${KERNEL_IMAGETYPE}" --fstype=none --part-name=bank0-kernel --align 1024 --uuid=${FWU_BANK0_KERNEL_IMAGE_UUID} --size 32M
+
+part bank0-rootfs --source rootfs --fstype=ext4 --label bank0-rootfs --align 1024 --uuid=${FWU_BANK0_ROOTFS_IMAGE_UUID} --size 512M
+
+part bank1-kernel --source rawcopy --sourceparams="file=${KERNEL_IMAGETYPE}" --fstype=none --part-name=bank1-kernel --align 1024 --uuid=${FWU_BANK1_KERNEL_IMAGE_UUID} --size 32M
+
+part bank1-rootfs --source rawcopy --sourceparams="file=${IMGDEPLOYDIR}/${IMAGE_LINK_NAME}.ext4" --fstype=none --part-name=bank1-rootfs --align 1024 --uuid=${FWU_BANK1_ROOTFS_IMAGE_UUID} --size 512M
+
+part /data --source rootfs --change-directory=data --fstype=ext4 --label data --align 1024 --size 1536M

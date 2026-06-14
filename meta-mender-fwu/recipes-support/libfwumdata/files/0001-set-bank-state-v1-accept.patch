@@ -1,0 +1,65 @@
+From: Josef Holzmayr <jester@theyoctojester.info>
+Date: Tue, 12 May 2026 19:11:17 +0000
+Subject: [PATCH] libfwumdata: allow fwumdata_set_bank_state() for V1 'accepted'
+Upstream-Status: Submitted [https://github.com/passgat/libfwumdata]
+
+V1 metadata carries acceptance as a per-image byte in
+fwumdata_image_bank_info.accepted. The existing
+fwumdata_set_bank_state() helper already loops over images and calls
+set_image_accepted() correctly, but the early `mdata->version == 1`
+check rejects V1 outright with -ENOTSUP, so userspace tools (yafwumdata
+-s, in particular) cannot mark a V1 trial bank accepted at all.
+
+Drop the blanket rejection. Keep V1 limited to the `accepted` state
+(valid/invalid are V2 bank_state[] semantics that don't exist in V1)
+and gate the trailing V2 bank_state[] write so it doesn't run for V1.
+
+Mirror the change in yafwumdata's usage text so the CLI doesn't tell
+users `-s` is V2-only.
+
+Signed-off-by: Josef Holzmayr <jester@theyoctojester.info>
+
+--- a/src/libfwumdata.c
++++ b/src/libfwumdata.c
+@@ -1001,7 +1001,14 @@ int fwumdata_set_bank_state(int mdd, uint32_t bank_idx, uint8_t state)
+ 	if (IS_ERR(mdata))
+ 		return PTR_ERR(mdata);
+
+-	if (mdata->version == 1 || bank_idx >= 4)
++	if (bank_idx >= 4)
++		return -ENOTSUP;
++
++	/* V1 has no fwumdata_ext / bank_state[] array; the only state
++	 * concept it carries is the per-image accepted byte. valid/invalid
++	 * are V2-only, so reject them up front.
++	 */
++	if (mdata->version == 1 && state != FWUMDATA_BANK_ACCEPTED)
+ 		return -ENOTSUP;
+
+ 	if (state == FWUMDATA_BANK_ACCEPTED) {
+@@ -1019,8 +1026,10 @@ int fwumdata_set_bank_state(int mdd, uint32_t bank_idx, uint8_t state)
+ 		}
+ 	}
+
+-	mdata_ext = to_mdata_ext(ctx->mdata[0]);
+-	mdata_ext->bank_state[bank_idx] = state;
++	if (mdata->version == 2) {
++		mdata_ext = to_mdata_ext(ctx->mdata[0]);
++		mdata_ext->bank_state[bank_idx] = state;
++	}
+
+ 	return 0;
+ }
+--- a/examples/yafwumdata.c
++++ b/examples/yafwumdata.c
+@@ -54,8 +54,9 @@ static void print_usage(FILE *stream)
+ 		"\t-l, --list                  List detailed metadata with GUIDs\n"
+ 		"\t-a, --active <bank>         Set active bank index\n"
+ 		"\t-p, --previous <bank>       Set previous bank index\n"
+-		"\t-s, --state <bank> <state>  Set bank state (V2 only)\n"
++		"\t-s, --state <bank> <state>  Set bank state\n"
+ 		"\t                              state: accepted|valid|invalid\n"
++		"\t                              (V1 supports `accepted` only)\n"
+ 		"\t-h, --help                  Print this help\n\n");
+ 	fprintf(stream,
+ 		"Config file format (fwumdata.config):\n"

@@ -1,0 +1,72 @@
+From 53435ff6398ea60cb3688e532fa5c4fd787ea5c3 Mon Sep 17 00:00:00 2001
+From: tyj <tyj@x>
+Date: Sat, 13 Jun 2026 18:04:01 +0000
+Subject: [PATCH 1/6] fwu-mdata: gpt_blk auto-discover block device on
+ platforms without DT phandle
+
+Upstream-Status: Pending
+
+Signed-off-by: meta-mender-fwu <noreply@example.com>
+---
+ drivers/fwu-mdata/gpt_blk.c | 42 ++++++++++++++++++++++++++++---------
+ 1 file changed, 32 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/fwu-mdata/gpt_blk.c b/drivers/fwu-mdata/gpt_blk.c
+index 97eac361..44f0ae86 100644
+--- a/drivers/fwu-mdata/gpt_blk.c
++++ b/drivers/fwu-mdata/gpt_blk.c
+@@ -132,19 +132,41 @@ static int fwu_get_mdata_device(struct udevice *dev, struct udevice **mdata_dev)
+ 	const fdt32_t *phandle_p = NULL;
+ 
+ 	phandle_p = dev_read_prop(dev, "fwu-mdata-store", &size);
+-	if (!phandle_p) {
+-		log_debug("fwu-mdata-store property not found\n");
+-		return -ENOENT;
+-	}
++	if (phandle_p) {
++		phandle = fdt32_to_cpu(*phandle_p);
+ 
+-	phandle = fdt32_to_cpu(*phandle_p);
++		ret = device_get_global_by_ofnode(ofnode_get_by_phandle(phandle),
++						  &parent);
++		if (ret)
++			return ret;
+ 
+-	ret = device_get_global_by_ofnode(ofnode_get_by_phandle(phandle),
+-					  &parent);
+-	if (ret)
+-		return ret;
++		return blk_get_from_parent(parent, mdata_dev);
++	}
+ 
+-	return blk_get_from_parent(parent, mdata_dev);
++	/*
++	 * No fwu-mdata-store phandle in DT. Fall back to scanning all
++	 * UCLASS_BLK devices and use the first one that has a pair of
++	 * GPT partitions of type FWU_MDATA_GUID. Used on platforms whose
++	 * device tree is supplied by the platform (e.g. QEMU virt) and
++	 * cannot be easily augmented at build time.
++	 */
++	{
++		struct udevice *blk_dev;
++
++		for (uclass_first_device(UCLASS_BLK, &blk_dev); blk_dev;
++		     uclass_next_device(&blk_dev)) {
++			struct blk_desc *desc = dev_get_uclass_plat(blk_dev);
++
++			g_mdata_part[0] = g_mdata_part[1] = 0;
++			if (gpt_get_mdata_partitions(desc) == 0) {
++				*mdata_dev = blk_dev;
++				return 0;
++			}
++		}
++	}
++
++	log_debug("fwu-mdata-store absent and no FWU metadata partitions found\n");
++	return -ENOENT;
+ }
+ 
+ static int fwu_mdata_gpt_blk_probe(struct udevice *dev)
+-- 
+2.34.1
+
