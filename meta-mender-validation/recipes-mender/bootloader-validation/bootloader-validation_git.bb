@@ -19,7 +19,8 @@ RDEPENDS:${PN} = "python3"
 inherit systemd
 SYSTEMD_SERVICE:${PN} = "mender-bootloader-validation.service"
 
-S = "${WORKDIR}/git"
+# Note: do not set S for the git fetch — wrynose's oe-core sets S correctly for
+# git SRC_URI on its own and errors out on a manual S = "${WORKDIR}/git".
 
 do_install() {
     if ${@bb.utils.contains('MENDER_FEATURES', 'mender-prepopulate-inactive-partition', 'false', 'true', d)}; then
