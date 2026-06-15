@@ -75,7 +75,7 @@ OVMF support and IDE/AHCI drive selection). Launch QEMU manually instead:
     -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22 \
     -drive id=disk0,file=/tmp/test.wic,format=raw,if=none \
     -device ide-hd,drive=disk0 \
-    -cpu IvyBridge -machine q35,i8042=off -smp 4 -m 2048 \
+    -cpu Skylake-Client -machine q35,i8042=off -smp 4 -m 2048 \
     -serial mon:stdio -serial null -nographic \
     -drive if=pflash,format=qcow2,file=$DEPLOY/ovmf.code.qcow2,readonly=on \
     -drive if=pflash,format=qcow2,file=/tmp/ovmf-vars.qcow2
@@ -83,6 +83,12 @@ OVMF support and IDE/AHCI drive selection). Launch QEMU manually instead:
 The WIC image and OVMF vars are copied so the originals stay untouched. The
 OVMF CODE file is used read-only; the VARS copy is writable for NVRAM
 persistence across reboots.
+
+The -cpu model must provide the x86-64-v3 instruction set (AVX2/BMI2): on
+wrynose the qemux86-64 DEFAULTTUNE is x86-64-v3, so userspace (down to the glibc
+dynamic linker) uses those instructions and an older model such as IvyBridge
+panics init with an invalid-opcode trap. Skylake-Client is the model oe-core
+itself pairs with this tune (QEMU_EXTRAOPTIONS in tune-x86-64-v3.inc).
 
 Boot chain
 ==========
