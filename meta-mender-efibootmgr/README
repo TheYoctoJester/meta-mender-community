@@ -177,6 +177,10 @@ Verified end-to-end on qemux86-64 against hosted.mender.io: first boot on rootA
 via the firmware fallback (BootOrder slot A first); an efibootmgr-rootfs OTA
 streams to rootB, trial-boots it (BootCurrent = "Mender slot B"), commits
 (BootOrder slot B first), and the server reports Success with the device
-reporting the new artifact_name. Rollback confirmed too: a trial boot that is
-power-cycled before commit returns to the committed slot, because the firmware
-has already consumed the one-shot BootNext.
+reporting the new artifact_name. Both rollback paths were confirmed too: a trial
+boot that is power-cycled before commit returns to the committed slot (the
+firmware has already consumed the one-shot BootNext); and a deliberately broken
+artifact whose trial kernel will not boot falls back to the committed slot,
+where ArtifactVerifyReboot detects the slot mismatch, ArtifactRollback restores
+BootOrder, and the server reports Failure with the device still on the committed
+slot and its original artifact_name.
