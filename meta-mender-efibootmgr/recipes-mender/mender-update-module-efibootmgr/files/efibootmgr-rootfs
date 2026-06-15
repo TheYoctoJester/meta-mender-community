@@ -1,0 +1,228 @@
+#!/bin/bash
+# Mender Update Module: efibootmgr-rootfs
+#
+# A/B rootfs updates driven entirely by the UEFI boot manager. There is no
+# stock Mender bootloader integration (no GRUB env, no U-Boot env): the
+# firmware launches an EFI-stub kernel directly, and this module switches slots
+# by manipulating UEFI boot variables with efibootmgr.
+#
+# The artifact payload is a single rootfs ext4 image (built with
+# `mender-artifact write module-image -T efibootmgr-rootfs`, see make-artifact.sh).
+#
+# The rootfs is large, so the payload is streamed straight to the inactive
+# partition during the Download state (like the built-in rootfs-image module)
+# rather than being buffered on /data first.
+#
+# Flow:
+#   Download         -- stream the payload directly onto the inactive rootfs
+#                       partition (no local copy of the whole image).
+#   ArtifactInstall  -- copy that rootfs's /boot/bzImage onto the ESP for the
+#                       inactive slot, then set BootNext to its UEFI entry.
+#   (mender reboots; NeedsArtifactReboot = Automatic)
+#   The firmware honours BootNext exactly once -- it deletes the variable before
+#   handing control to the trial kernel -- so a trial that panics or a power cut
+#   simply falls back to BootOrder (the still-committed slot) on the next boot.
+#   ArtifactVerifyReboot   -- assert we booted the slot we targeted.
+#   ArtifactCommit         -- rewrite BootOrder so the new slot is the default.
+#   ArtifactRollback       -- clear BootNext and point BootOrder back at the
+#                             previously-committed slot.
+#
+# Module API: https://docs.mender.io/artifact-creation/create-a-custom-update-module
+
+set -eu
+
+STATE="$1"
+FILES_DIR="$2"
+
+ESP_MOUNT="/boot/efi"
+STATE_DIR="/data/mender-efibootmgr"
+PENDING="${STATE_DIR}/pending"          # trial target slot (A|B) during an update
+ROLLBACK_TO="${STATE_DIR}/rollback-to"  # committed slot to verify after a rollback
+
+log() { echo "efibootmgr-rootfs: $*"; }
+die() { echo "efibootmgr-rootfs: ERROR: $*" >&2; exit 1; }
+
+dev_for_slot()  { echo "/dev/disk/by-partlabel/root$1"; }
+espdir_for_slot() { [ "$1" = "A" ] && echo "mender-a" || echo "mender-b"; }
+label_for_slot()  { echo "Mender slot $1"; }
+other_slot()      { [ "$1" = "A" ] && echo "B" || echo "A"; }
+
+current_slot() {
+    local src a b
+    src=$(readlink -f "$(findmnt -n -o SOURCE / 2>/dev/null)")
+    a=$(readlink -f "$(dev_for_slot A)" 2>/dev/null || true)
+    b=$(readlink -f "$(dev_for_slot B)" 2>/dev/null || true)
+    if   [ "$src" = "$a" ]; then echo "A"
+    elif [ "$src" = "$b" ]; then echo "B"
+    else die "running root $src is neither rootA ($a) nor rootB ($b)"
+    fi
+}
+
+bootnum_for_slot() {
+    # efibootmgr prints "Boot0005* <label>\t<device path...>"; the label is
+    # delimited by a leading "* " and a trailing TAB, not the end of line.
+    local label tab line
+    label=$(label_for_slot "$1")
+    tab=$(printf '\t')
+    line=$(efibootmgr | grep -F "* ${label}${tab}" | head -n1) || true
+    [ -n "$line" ] || return 0
+    line=${line#Boot}
+    echo "${line%%\**}"
+}
+
+ensure_esp_mounted() {
+    mountpoint -q "$ESP_MOUNT" && return
+    mkdir -p "$ESP_MOUNT"
+    mount /dev/disk/by-partlabel/ESP "$ESP_MOUNT" || die "cannot mount ESP at ${ESP_MOUNT}"
+}
+
+ensure_efivars() {
+    [ -d /sys/firmware/efi ] || die "/sys/firmware/efi absent -- not booted via UEFI"
+    mountpoint -q /sys/firmware/efi/efivars || \
+        mount -t efivarfs none /sys/firmware/efi/efivars 2>/dev/null || true
+}
+
+case "$STATE" in
+    NeedsArtifactReboot)
+        echo "Automatic"
+        ;;
+
+    SupportsRollback)
+        echo "Yes"
+        ;;
+
+    Download)
+        # Stream the payload straight to the inactive partition. Consuming the
+        # streams here means mender does NOT buffer the (rootfs-sized) payload
+        # on /data before ArtifactInstall.
+        ensure_efivars
+        cur=$(current_slot)
+        inact=$(other_slot "$cur")
+        inact_dev=$(dev_for_slot "$inact")
+        mkdir -p "$STATE_DIR"
+        echo "$inact" > "$PENDING"
+        log "running on slot $cur; streaming payload to inactive slot $inact ($inact_dev)"
+        # Protocol: read one line from stream-next (relative path to the next
+        # stream, e.g. "streams/<name>"), read that named pipe exactly once,
+        # repeat until stream-next yields a zero-length read.
+        while true; do
+            stream=$(cat "$FILES_DIR/stream-next")
+            [ -n "$stream" ] || break
+            log "streaming $stream -> $inact_dev"
+            dd if="$FILES_DIR/$stream" of="$inact_dev" bs=4M conv=fsync status=none
+        done
+        sync
+        ;;
+
+    ArtifactInstall)
+        ensure_efivars
+        # Download already streamed the rootfs to the inactive partition and
+        # recorded the slot. If Download did not run (non-streaming fallback,
+        # mender stored the payload under files/), write it now.
+        if [ -f "$PENDING" ]; then
+            inact=$(cat "$PENDING")
+        else
+            inact=$(other_slot "$(current_slot)")
+            mkdir -p "$STATE_DIR"; echo "$inact" > "$PENDING"
+        fi
+        inact_dev=$(dev_for_slot "$inact")
+        payload=$(ls "$FILES_DIR"/files/* 2>/dev/null | head -n1) || true
+        if [ -n "${payload:-}" ]; then
+            log "writing buffered payload $(basename "$payload") -> $inact_dev"
+            dd if="$payload" of="$inact_dev" bs=4M conv=fsync status=none
+        fi
+        log "finalizing inactive slot $inact ($inact_dev)"
+
+        # Copy the new slot's EFI-stub kernel onto the ESP so its UEFI entry boots it.
+        ensure_esp_mounted
+        tmp=$(mktemp -d)
+        mount -o ro "$inact_dev" "$tmp" || die "cannot mount freshly written $inact_dev"
+        espdir="${ESP_MOUNT}/EFI/$(espdir_for_slot "$inact")"
+        mkdir -p "$espdir"
+        cp -L "$tmp/boot/bzImage" "$espdir/bzImage.efi" || { umount "$tmp"; die "no /boot/bzImage in new rootfs"; }
+        umount "$tmp"; rmdir "$tmp"
+        sync
+
+        num=$(bootnum_for_slot "$inact")
+        [ -n "$num" ] || die "no UEFI entry for slot $inact (first-boot provisioning did not run?)"
+        log "setting BootNext to $num (slot $inact) for the trial boot"
+        efibootmgr -n "$num" >/dev/null
+        sync
+        ;;
+
+    ArtifactReboot)
+        # NeedsArtifactReboot = Automatic: mender performs the reboot itself.
+        :
+        ;;
+
+    ArtifactVerifyReboot)
+        [ -f "$PENDING" ] || die "no pending marker; install did not complete"
+        want=$(cat "$PENDING")
+        cur=$(current_slot)
+        [ "$cur" = "$want" ] || die "post-reboot slot mismatch: on $cur, expected trial slot $want"
+        log "booted trial slot $cur as expected"
+        ;;
+
+    ArtifactCommit)
+        ensure_efivars
+        cur=$(current_slot)
+        other=$(other_slot "$cur")
+        numCur=$(bootnum_for_slot "$cur")
+        numOther=$(bootnum_for_slot "$other")
+        [ -n "$numCur" ] || die "no UEFI entry for current slot $cur"
+        log "committing slot $cur: BootOrder ${numCur},${numOther}"
+        efibootmgr -o "${numCur}${numOther:+,$numOther}" >/dev/null
+        rm -f "$PENDING"
+        sync
+        ;;
+
+    ArtifactRollback)
+        ensure_efivars
+        # Determine the slot to return to: the previously-committed one, i.e.
+        # the slot that was NOT the trial target. If install failed before the
+        # trial even started, there is no pending marker and we are already on
+        # the committed slot.
+        if [ -f "$PENDING" ]; then
+            committed=$(other_slot "$(cat "$PENDING")")
+        else
+            committed=$(current_slot)
+        fi
+        numC=$(bootnum_for_slot "$committed")
+        numO=$(bootnum_for_slot "$(other_slot "$committed")")
+        log "rolling back to committed slot $committed"
+        efibootmgr -N >/dev/null 2>&1 || true   # drop any pending BootNext
+        [ -n "$numC" ] && efibootmgr -o "${numC}${numO:+,$numO}" >/dev/null
+        mkdir -p "$STATE_DIR"
+        echo "$committed" > "$ROLLBACK_TO"
+        rm -f "$PENDING"
+        sync
+        ;;
+
+    ArtifactRollbackReboot)
+        # Automatic reboot is handled by mender.
+        :
+        ;;
+
+    ArtifactVerifyRollbackReboot)
+        cur=$(current_slot)
+        if [ -f "$ROLLBACK_TO" ]; then
+            want=$(cat "$ROLLBACK_TO")
+            [ "$cur" = "$want" ] || die "post-rollback slot mismatch: on $cur, expected $want"
+            rm -f "$ROLLBACK_TO"
+        fi
+        log "running committed slot $cur after rollback"
+        ;;
+
+    ProvidePayloadFileSizes)
+        # "No" -> mender uses the plain Download (stream-next without sizes).
+        echo "No"
+        ;;
+
+    ArtifactFailure|Cleanup)
+        :
+        ;;
+
+    *)
+        :
+        ;;
+esac

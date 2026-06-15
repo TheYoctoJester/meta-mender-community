@@ -1,0 +1,23 @@
+# Explicit 4-partition GPT layout for the efibootmgr A/B demo on qemux86-64.
+#
+#   1. ESP   (FAT)  - three copies of the EFI-stub kernel:
+#                       EFI/BOOT/bootx64.efi      (firmware fallback / first boot)
+#                       EFI/mender-a/bzImage.efi  (UEFI entry "Mender slot A")
+#                       EFI/mender-b/bzImage.efi  (UEFI entry "Mender slot B")
+#   2. rootA (ext4) - active rootfs, fixed PARTUUID (matches kernel CONFIG_CMDLINE)
+#   3. rootB (ext4) - inactive rootfs, fixed PARTUUID (empty until first update)
+#   4. data  (ext4) - persistent /data (Mender state, key, store)
+#
+# rootA/rootB carry fixed partition UUIDs so the kernel's builtin command line
+# can name rootA on the very first boot, before the first-boot service has
+# created the UEFI boot entries that carry the per-slot root= load options.
+
+part --source bootimg-partition --ondisk sda --fstype=vfat --label ESP --align 1024 --size 64 --part-type C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+
+part / --source rootfs --ondisk sda --fstype=ext4 --label rootA --align 1024 --fixed-size 512M --uuid ${EFIBOOTMGR_ROOTA_UUID}
+
+part --ondisk sda --fstype=ext4 --label rootB --align 1024 --fixed-size 512M --uuid ${EFIBOOTMGR_ROOTB_UUID}
+
+part --source rootfs --change-directory=data --ondisk sda --fstype=ext4 --label data --align 1024 --size 128
+
+bootloader --ptable gpt

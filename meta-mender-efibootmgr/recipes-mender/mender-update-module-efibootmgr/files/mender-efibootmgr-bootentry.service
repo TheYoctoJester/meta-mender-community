@@ -1,0 +1,12 @@
+[Unit]
+Description=Register per-slot UEFI boot entries for Mender A/B (efibootmgr)
+After=local-fs.target boot-efi.mount
+ConditionPathExists=!/data/mender-efibootmgr/bootentries-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mender-efibootmgr-bootentry.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
