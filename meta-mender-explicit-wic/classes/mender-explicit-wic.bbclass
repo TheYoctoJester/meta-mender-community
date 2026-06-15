@@ -19,7 +19,7 @@ MENDER_FEATURES_DISABLE:append = " mender-image mender-part-images"
 
 # Use explicit WKS file instead of dynamic generation
 WKS_FILE = "mender-explicit-${MACHINE}.wks"
-WKS_SEARCH_PATH:prepend = "${LAYERDIR_meta-mender-explicit-wic}/wic:"
+WKS_SEARCH_PATH:prepend = "${LAYERDIR_meta-mender-explicit-wic}/files/wic:"
 
 # Image types: WIC for disk images, mender for OTA artifacts
 IMAGE_FSTYPES:append = " wic wic.bz2 mender"
