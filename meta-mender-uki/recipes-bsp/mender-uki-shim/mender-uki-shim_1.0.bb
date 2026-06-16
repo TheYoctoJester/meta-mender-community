@@ -1,10 +1,18 @@
 SUMMARY = "fw_setenv/fw_printenv shim for Mender on a UKI + systemd-boot system"
-DESCRIPTION = "Persists Mender boot state in /data/mender-uki/state and, on \
-a slot flip, copies the matching UKI from /usr/lib/mender to the ESP, \
-rewrites the `default` line in /boot/loader/loader.conf, and best-effort \
-calls bootctl set-default. Used in place of u-boot-fw-utils when no U-Boot \
+DESCRIPTION = "Drives Mender A/B on a UKI + systemd-boot system via \
+systemd-boot's boot counting. On install it stages the inactive slot's UKI \
+onto the ESP with a +N tries counter (so systemd-boot trials it and falls \
+back automatically if it is never blessed); on commit it strips the counter \
+to make the slot permanent. mender_boot_part is answered by introspecting \
+the running root (root=PARTLABEL), so systemd-boot is the single source of \
+truth for slot selection. Used in place of u-boot-fw-utils when no U-Boot \
 env is reachable from userspace (the case on qemuarm64-secureboot, where \
 U-Boot is the UEFI runtime and there is no fw_env partition). \
+\
+Masks systemd-bless-boot.service: the bless (counter strip) is done by this \
+shim from the running slot, not by systemd's tooling, which depends on the \
+LoaderBootCountPath EFI variable that U-Boot's UEFI runtime does not \
+reliably expose to Linux. \
 \
 Also ships a tmpfiles snippet + a var-lib-mender.mount unit that together \
 bind-mount /data/mender over /var/lib/mender before the mender services \
@@ -41,6 +49,13 @@ do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/var-lib-mender.mount \
         ${D}${systemd_system_unitdir}/var-lib-mender.mount
+
+    # Mask systemd-bless-boot.service. The bless is done by the shim (direct
+    # counter-strip rename from the running slot); systemd's own bless relies
+    # on the LoaderBootCountPath EFI variable that U-Boot's UEFI runtime does
+    # not reliably expose, and could otherwise either fail or race the shim.
+    install -d ${D}${sysconfdir}/systemd/system
+    ln -sf /dev/null ${D}${sysconfdir}/systemd/system/systemd-bless-boot.service
 }
 
 FILES:${PN} += " \
@@ -49,4 +64,5 @@ FILES:${PN} += " \
     ${bindir}/fw_printenv \
     ${libdir}/tmpfiles.d/mender-uki-data.conf \
     ${systemd_system_unitdir}/var-lib-mender.mount \
+    ${sysconfdir}/systemd/system/systemd-bless-boot.service \
 "

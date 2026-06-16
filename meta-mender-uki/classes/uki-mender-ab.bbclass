@@ -17,13 +17,17 @@ UKI_CMDLINE_B ?= "rootwait root=PARTLABEL=mender-rootfsb console=${KERNEL_CONSOL
 
 inherit uki
 
-# Deploy BOTH UKIs into the ESP plus an initial loader.conf so systemd-boot
-# picks uki-a.efi as the default at first boot. (Without an explicit default,
-# systemd-boot's auto-discovery picks the alphabetically-last *.efi, i.e.
-# uki-b.efi -- not what we want for an initial-slot=A invariant.)
+# Deploy ONLY the committed image at first boot: slot A's UKI as
+# uki-current.efi, plus a loader.conf with NO `default`. mender-uki-shim
+# drives A/B via systemd-boot boot counting and the sort order of the on-ESP
+# filenames (a trial is staged as uki-update+N.efi, which sorts before
+# uki-current.efi and is demoted past it once its counter hits zero), so an
+# explicit `default` must NOT be set -- systemd-boot honours `default` without
+# any bad-entry check and would keep booting an exhausted trial. The slot-B
+# UKI is not placed on the ESP at build time; it travels in the rootfs
+# (/usr/lib/mender) and the shim stages it on demand.
 IMAGE_EFI_BOOT_FILES = "\
-    ${UKI_FILENAME};EFI/Linux/${UKI_FILENAME} \
-    ${UKI_FILENAME_B};EFI/Linux/${UKI_FILENAME_B} \
+    ${UKI_FILENAME};EFI/Linux/uki-current.efi \
     loader.conf;loader/loader.conf \
 "
 
@@ -99,11 +103,13 @@ python do_uki_b() {
             bb.fatal("uki-mender-ab: missing UKI for staging: %s" % src)
         shutil.copy2(src, os.path.join(dst, fn))
 
-    # Generate the initial loader.conf pointing at slot A. bootimg_efi will
-    # deploy this to /loader/loader.conf on the ESP per IMAGE_EFI_BOOT_FILES.
+    # Generate the initial loader.conf with NO `default`: systemd-boot selects
+    # by sort order (the shim relies on this for rollback -- see
+    # IMAGE_EFI_BOOT_FILES above and mender-uki-shim.sh). bootimg_efi deploys
+    # this to /loader/loader.conf on the ESP per IMAGE_EFI_BOOT_FILES.
     loader_conf = os.path.join(deploy_dir_image, "loader.conf")
     with open(loader_conf, "w") as f:
-        f.write("default %s\ntimeout 3\n" % d.getVar('UKI_FILENAME'))
+        f.write("timeout 3\n")
 }
 addtask do_uki_b after do_uki before do_deploy do_image_complete do_image_wic
 do_uki_b[depends] += "systemd-boot:do_deploy virtual/kernel:do_deploy"
