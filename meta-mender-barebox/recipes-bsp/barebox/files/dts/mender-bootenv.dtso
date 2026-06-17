@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: GPL-2.0-only
+//
+// barebox device-tree OVERLAY for the Mender + barebox A/B integration.
+//
+// Declares the U-Boot environment device that the ubootvar driver binds to
+// (compatible "barebox,uboot-environment", which is DT-only). The env partition
+// is referenced by its GPT partition UUID via the "fixed-partitions + partuuid"
+// binding that barebox' of_find_path resolves globally (cdev_by_partuuid, see
+// drivers/of/of_path.c) -- so this works regardless of which storage controller
+// or (on qemu) which of the many virtio-mmio nodes hosts the disk, and is
+// identical for qemu and real hardware.
+//
+// The partuuid here MUST match the fixed --uuid set on the mender-bootenv
+// partition in the wks (files/wic/mender-barebox-*.wks.in).
+//
+// Applied to barebox' LIVE tree at startup by /env/init/mender via
+//   of_overlay -l /env/data/mender-bootenv.dtbo
+// which probes the newly added ubootvar node and creates /dev/ubootvar0 before
+// /env/boot/mender runs. Requires CONFIG_OF_OVERLAY + CONFIG_OF_OVERLAY_LIVE.
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			mender-bootenv-partitions {
+				compatible = "fixed-partitions";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				mender_bootenv_part: partition {
+					label = "mender-bootenv";
+					partuuid = "e6f1c2d3-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
+				};
+			};
+
+			mender-uboot-environment {
+				compatible = "barebox,uboot-environment";
+				device-path = "/mender-bootenv-partitions/partition";
+			};
+		};
+	};
+};

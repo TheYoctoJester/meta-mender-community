@@ -1,0 +1,9 @@
+#!/bin/sh
+# Select the Mender A/B boot entry. Runs from barebox' built-in init, before
+# the autoboot countdown. See /env/boot/mender for the slot-selection and
+# rollback logic.
+
+global.boot.default=mender
+
+# Unattended OTA device: keep the interactive window short.
+global.autoboot_timeout=2

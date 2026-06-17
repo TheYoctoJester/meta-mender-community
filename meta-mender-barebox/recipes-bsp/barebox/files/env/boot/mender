@@ -1,0 +1,124 @@
+#!/bin/sh
+# /env/boot/mender -- Mender A/B boot entry for barebox.
+#
+# Reimplements Mender's U-Boot boot contract (meta-mender's env_mender.h) on
+# barebox. The A/B state lives in a U-Boot-format environment that the OS
+# mutates with libubootenv's fw_setenv/fw_printenv; barebox reads and writes
+# the very same bytes through the ubootvar driver (device-tree node
+# compatible="barebox,uboot-environment") exposed as a filesystem by ubootvarfs
+# at /dev/ubootvar0. Variables (same names Mender's rootfs-image module uses):
+#
+#   mender_boot_part    rootfs partition to boot: 2 -> slot A, 3 -> slot B
+#   mender_boot_part_hex kept in sync with mender_boot_part (Mender reads it)
+#   upgrade_available   1 while an update is on trial (set by Mender install)
+#   bootcount           trial boot attempts so far (incremented here)
+#   bootlimit           max trial attempts before rollback (default 1)
+#
+# Rollback -- the job U-Boot core does via CONFIG_BOOTCOUNT -- is done here:
+# on a trial boot bootcount is incremented and persisted BEFORE booting, so a
+# hang or power-cut still counts; once bootcount > bootlimit we switch back to
+# the other slot, clear upgrade_available and reset bootcount. A successful OS
+# boot clears upgrade_available from userspace (mender commit -> fw_setenv).
+
+ENVDEV=/dev/ubootvar0
+ENVMNT=/mnt/mender-bootenv
+
+mkdir -p $ENVMNT
+
+# Add the U-Boot environment device (ubootvar) to the live device tree so
+# /dev/ubootvar0 exists. The overlay references the env partition by GPT
+# partuuid (independent of the storage controller / virtio node). This is done
+# here, at boot-entry time, rather than in /env/init because the ubootvar probe
+# resolves the partition via cdev_by_partuuid, which needs the storage device's
+# partitions already enumerated -- they are by now, but not yet at init time.
+# (cdev_by_partuuid returns -ENODEV, not -EPROBE_DEFER, so the partition must
+# exist before the overlay is applied.)
+detect -a
+of_overlay -l /env/data/mender-bootenv.dtbo
+
+mount -t ubootvarfs $ENVDEV $ENVMNT
+if [ $? != 0 ]; then
+	echo "mender: cannot mount U-Boot env on $ENVDEV"
+	exit 1
+fi
+
+readf $ENVMNT/mender_boot_part  mender_boot_part
+readf $ENVMNT/upgrade_available upgrade_available
+readf $ENVMNT/bootcount         bootcount
+readf $ENVMNT/bootlimit         bootlimit
+
+# Defaults if the env was never seeded (first boot uses the build-time image).
+[ -n "$mender_boot_part" ]  || mender_boot_part=2
+[ -n "$upgrade_available" ] || upgrade_available=0
+[ -n "$bootcount" ]         || bootcount=0
+[ -n "$bootlimit" ]         || bootlimit=1
+
+if [ "$upgrade_available" = "1" ]; then
+	let bootcount=$bootcount+1
+	echo -n -o $ENVMNT/bootcount "$bootcount"
+
+	if [ "$bootcount" -gt "$bootlimit" ]; then
+		# Trial exhausted: roll back to the previously committed slot.
+		if [ "$mender_boot_part" = "2" ]; then
+			mender_boot_part=3
+		else
+			mender_boot_part=2
+		fi
+		echo -n -o $ENVMNT/mender_boot_part     "$mender_boot_part"
+		echo -n -o $ENVMNT/mender_boot_part_hex "$mender_boot_part"
+		echo -n -o $ENVMNT/upgrade_available    0
+		echo -n -o $ENVMNT/bootcount            0
+		echo "mender: bootlimit exceeded, rolling back to part $mender_boot_part"
+	fi
+fi
+
+# Flush the env to storage before handing control to Linux: ubootvarfs uses
+# lazy sync and only writes back on unmount.
+umount $ENVMNT
+
+# Map the Mender partition number to the GPT-named rootfs slot. barebox creates
+# a /dev/<disk>.<gpt-name> alias for every named GPT partition (see
+# common/partitions.c), so we address slots by label; only the disk base is
+# machine-specific (@BAREBOX_DISK@, substituted at build time).
+if [ "$mender_boot_part" = "3" ]; then
+	slot=mender-rootfsb
+else
+	slot=mender-rootfsa
+fi
+rootdev=/dev/@BAREBOX_DISK@.$slot
+
+mkdir -p /mnt/mender-root
+mount $rootdev /mnt/mender-root
+if [ $? != 0 ]; then
+	echo "mender: cannot mount rootfs slot $slot ($rootdev)"
+	exit 1
+fi
+
+# Kernel + device tree travel inside each rootfs slot's /boot, so a Mender
+# rootfs artifact carries the kernel for the slot it lands on.
+global.bootm.image="/mnt/mender-root/boot/@KERNEL_IMAGE@"
+
+# Device tree source. Two modes (@DTB_SOURCE@, set per machine at build time):
+#
+#   rootfs   - boot the dtb from the slot's /boot, so a Mender rootfs Artifact
+#              carries a matching dtb (barebox fixes up the memory node). Default
+#              for boards where barebox has no firmware-provided tree.
+#   internal - leave bootm.oftree unset so barebox boots its own internal
+#              device tree. On Raspberry Pi this is the VideoCore firmware tree,
+#              already set up by the firmware (UART pin mux) and by barebox
+#              (mini-UART console) -- i.e. exactly how a normal RPi boot gets its
+#              dtb. Forcing the slot's static dtb instead leaves the header UART
+#              without valid pinctrl, so its console dies after early boot.
+if [ "@DTB_SOURCE@" = "internal" ]; then
+	global.bootm.oftree=""
+else
+	oftree="/mnt/mender-root/boot/@DTB_NAME@"
+	if [ -f "$oftree" ]; then
+		global.bootm.oftree="$oftree"
+	fi
+fi
+
+# Address the root by partition label so it is stable across the A/B swap.
+global.linux.bootargs.dyn.root="root=PARTLABEL=$slot @BOOTARGS@"
+
+echo "mender: booting $slot  image=$global.bootm.image  dtb-source=@DTB_SOURCE@ oftree=$global.bootm.oftree"
