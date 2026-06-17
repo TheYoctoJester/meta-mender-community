@@ -42,12 +42,17 @@ client-only setup leaves to the integrator.
   `ArtifactRollback` re-activates the previously booted slot. The payload is a
   single signed `.raucb` in the artifact; RAUC verifies it against its keyring.
 
-* `recipes-mender/mender-rauc-data/` — a tmpfiles snippet that seeds
-  `/data/mender` from the build-time `/var/lib/mender` on first boot, plus a
-  `var-lib-mender.mount` unit that bind-mounts `/data/mender` over
+* `recipes-mender/mender-rauc-data/` — a `mender-rauc-data-seed.service` that
+  seeds `/data/mender` from the build-time `/var/lib/mender` on first boot, plus
+  a `var-lib-mender.mount` unit that bind-mounts `/data/mender` over
   `/var/lib/mender` before the mender services start. This keeps the Mender
   state DB and the agent key on RAUC's persistent `/data` partition so they
-  survive the rootfs swap of an A/B OTA.
+  survive the rootfs swap of an A/B OTA. The seed is a service rather than a
+  tmpfiles `C` rule so it can be ordered explicitly *before*
+  `mender-data-dir.service` (meta-mender's own `mkdir /data/mender`) and the
+  bind mount; otherwise an empty `/data/mender` could win that race and the
+  bind mount would shadow the rootfs `device_type`, leaving the device unable
+  to report `device_type` inventory.
 
 * `recipes-mender/update-bundle-mender/` — wraps the `.raucb` produced by
   `meta-rauc-qemuarm`'s `update-bundle` into a Mender artifact of payload type
@@ -103,7 +108,7 @@ this way:
    key + state DB in `/var/lib/mender`, which a RAUC A/B update replaces along
    with the rootfs. Without the bind mount above, the device re-enrols after
    every update and the post-reboot commit reports `Failure` even though the
-   RAUC slot switch was correct. The tmpfiles `C` seed + the `.mount` unit fix
+   RAUC slot switch was correct. The seed service + the `.mount` unit fix
    this (cf. the same pattern in `meta-mender-uki`).
 
 2. **`/etc/fw_env.config` can go missing.** meta-mender's `libubootenv`

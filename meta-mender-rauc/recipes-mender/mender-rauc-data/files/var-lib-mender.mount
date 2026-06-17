@@ -1,6 +1,6 @@
 [Unit]
 Description=Bind /data/mender over /var/lib/mender for OTA-persistent state
-After=data.mount systemd-tmpfiles-setup.service
+After=data.mount mender-rauc-data-seed.service
 Requires=data.mount
 ConditionPathExists=/data/mender
 DefaultDependencies=no
