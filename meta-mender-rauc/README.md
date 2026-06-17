@@ -3,20 +3,25 @@
 Manage a [RAUC](https://rauc.io)-updated A/B system from the Mender server on
 Yocto wrynose. RAUC stays the on-device updater; the Mender server delivers the
 RAUC bundle inside a Mender artifact and a custom Update Module installs it.
-End-to-end verified against hosted.mender.io on `qemuarm64`.
+End-to-end verified against hosted.mender.io on `qemuarm64` (QEMU) and on
+`raspberrypi4-64` (real hardware).
 
 ## Division of responsibility
 
 * **RAUC** owns the A/B layout, the signed bundle format, the slot switch and
   the bootloader attempt-counter rollback. The A/B machine itself — slots,
-  `update-bundle` recipe and the u-boot bootscript — comes from
-  `rauc/meta-rauc-community`'s `meta-rauc-qemuarm`, not from this layer.
+  `update-bundle` recipe and the u-boot bootscript — comes from a
+  `rauc/meta-rauc-community` board layer, **not** from this layer:
+  `meta-rauc-qemuarm` for `qemuarm64`, `meta-rauc-raspberrypi` for the Pi.
 * **Mender** owns fleet connectivity, inventory, deployment orchestration, the
   reboot and the commit signal.
-* **This layer** is the glue between the two. It carries no machine or slot
-  definitions; it assumes the `meta-rauc-qemuarm` layout (rootfs slots
-  `/dev/vda2`/`/dev/vda3`, data partition `/dev/vda4` at `/data`, compatible
-  string `qemuarm demo`).
+* **This layer** is the glue between the two. It is board-agnostic: it carries
+  no machine or slot definitions and only ever talks to `rauc`. It assumes the
+  chosen board layer provides RAUC's slots, a persistent `/data` partition and
+  a u-boot environment RAUC can read. Per-board specifics (e.g. qemuarm:
+  `/dev/vda2`/`vda3` + `/dev/vda4` at `/data`, compatible `qemuarm demo`;
+  raspberrypi4-64: `/dev/mmcblk0p2`/`p3` + `/dev/mmcblk0p5` at `/data`,
+  compatible `raspberrypi4-64`) come entirely from that layer.
 
 ## Why a dedicated layer
 
@@ -110,23 +115,35 @@ this way:
 
 ## Reproducing the build
 
-This layer is consumed by the matching kas wrapper at
-`yocto/wrynose/floating/qemuarm64-rauc.yml` on branch `wrynose-demos` of
-`theyoctojester/mender-community-images`:
+This layer is consumed by matching kas wrappers on branch `wrynose-demos` of
+`theyoctojester/mender-community-images`, one per board:
 
 ```sh
 git clone https://github.com/theyoctojester/mender-community-images.git
 cd mender-community-images
 git checkout wrynose-demos
-kas build yocto/wrynose/floating/qemuarm64-rauc.yml
+kas build yocto/wrynose/floating/qemuarm64-rauc.yml        # QEMU
+kas build yocto/wrynose/floating/raspberrypi4-64-rauc.yml  # Raspberry Pi 4
 ```
 
-The wrapper composes `meta-rauc` (wrynose) + `rauc/meta-rauc-community`'s
-`meta-rauc-qemuarm` (compat-forced to wrynose) + `meta-mender-client-only` +
-this layer, and inherits the rest of the wrynose stack (oe-core, meta-yocto,
-meta-openembedded, meta-mender) from the existing `include/mender-base.yml`.
-Server URL and tenant token are provided by the builder (e.g. in a local
-override), not committed.
+Each wrapper composes `meta-rauc` (wrynose) + a `rauc/meta-rauc-community` board
+layer + `meta-mender-client-only` + this layer, and inherits the rest of the
+wrynose stack (oe-core, meta-yocto, meta-openembedded, meta-mender) from the
+existing `include/mender-base.yml`. Server URL and tenant token are provided by
+the builder (e.g. in a local override), not committed.
+
+* **qemuarm64**: `meta-rauc-qemuarm`, compat-forced to wrynose in
+  `bblayers_conf_header` (the layer declares only `styhead..whinlatter`).
+* **raspberrypi4-64**: `meta-rauc-raspberrypi` + `meta-raspberrypi`. The layer
+  already declares wrynose compat (no force needed) and brings the U-Boot
+  bootscript, the dual-rootfs wks (`mmcblk0p2`/`p3` slots, `/data`, `/home`)
+  and `RDEPENDS u-boot-fw-utils u-boot-env` so `/etc/fw_env.config` is present.
+  The wrapper sets short Mender poll intervals so a server deployment is picked
+  up quickly. One caveat: `meta-rauc-raspberrypi`'s `update-bundle` hardcodes
+  `RAUC_BUNDLE_VERSION`; override it per release if you want the RAUC-level
+  bundle version (reported via `rauc-inventory` as `rootfs-image.version`) to
+  be meaningful — the Mender artifact name (`rauc-raspberrypi4-64-<n>`) already
+  bumps independently.
 
 ## Verification recipe
 
@@ -147,9 +164,13 @@ systemctl is-active mender-updated mender-authd
 ```
 
 End-to-end against the Mender server: enrol and accept the device, upload the
-`rauc-qemuarm64-<n>.mender` artifact, deploy it, and observe install -> reboot
+`rauc-<machine>-<n>.mender` artifact, deploy it, and observe install -> reboot
 (slot A -> B) -> `rauc status mark-good` -> deployment `Success`, with the
-device reporting the new artifact name.
+device reporting the new artifact name. On real hardware this is automated in
+`theyoctojester/mender-integration-builds` (`build-yocto-wrynose-demo.yml`),
+which builds `raspberrypi4-64-rauc` and runs the full OTA on an RPi4 DUT
+(`hardware-test/tests/test_flash_and_ota.py`) against hosted.mender.io, logging
+into the management API with credentials set in the workflow job env.
 
 ## License
 
