@@ -73,9 +73,14 @@ mender_barebox_fstab() {
     local fstab="${IMAGE_ROOTFS}${sysconfdir}/fstab"
     install -d ${IMAGE_ROOTFS}/boot/firmware
     install -d ${IMAGE_ROOTFS}/data
-    sed -i -E '\#[[:space:]]/boot/firmware[[:space:]]#d; \#[[:space:]]/data[[:space:]]#d' "$fstab" 2>/dev/null || true
-    printf '/dev/disk/by-partlabel/mender-boot\t/boot/firmware\tvfat\tdefaults\t0\t2\n' >> "$fstab"
-    printf '/dev/disk/by-partlabel/mender-data\t/data\text4\tdefaults\t0\t2\n' >> "$fstab"
+    # Own the boot+data mounts: drop any prior entries, including meta-mender's
+    # /boot/efi line for the very same FAT partition (it double-mounts the boot
+    # partition). nofail is essential: without it a slow/absent partition makes
+    # the mount a hard dependency of local-fs.target and can stall the boot
+    # before multi-user.target (sshd, the Mender client) is reached.
+    sed -i -E '\#[[:space:]]/boot/firmware[[:space:]]#d; \#[[:space:]]/data[[:space:]]#d; \#[[:space:]]/boot/efi[[:space:]]#d' "$fstab" 2>/dev/null || true
+    printf '/dev/disk/by-partlabel/mender-boot\t/boot/firmware\tvfat\tdefaults,nofail\t0\t2\n' >> "$fstab"
+    printf '/dev/disk/by-partlabel/mender-data\t/data\text4\tdefaults,nofail\t0\t2\n' >> "$fstab"
 }
 
 # Seed the persistent /data/mender tree at build time. var-lib-mender.mount
