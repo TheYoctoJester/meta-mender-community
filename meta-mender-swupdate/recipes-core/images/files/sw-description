@@ -1,16 +1,16 @@
 software = {
-    version = "__SWUPDATE_SOFTWARE_VERSION";
+    version = "@@SWUPDATE_SOFTWARE_VERSION@@";
 
-    __SWUPDATE_HARDWARE_VERSION = {
-        hardware-compatibility: [ "1.0" ];
+    @@MACHINE@@ = {
+        hardware-compatibility: [ "@@SWUPDATE_HARDWARE_VERSION@@" ];
         stable: {
             copy1: {
                 images: (
                     {
-                        filename = "main-image-__MACHINE.ext4.gz";
+                        filename = "main-image-@@MACHINE@@.ext4.gz";
                         type = "raw";
                         compressed = "zlib";
-                        device = "/dev/__OTA_PARTITION_A";
+                        device = "/dev/@@OTA_PARTITION_A@@";
                     }
                 );
                 uboot: (
@@ -24,10 +24,10 @@ software = {
             copy2: {
                 images: (
                     {
-                        filename = "main-image-__MACHINE.ext4.gz";
+                        filename = "main-image-@@MACHINE@@.ext4.gz";
                         type = "raw";
                         compressed = "zlib";
-                        device = "/dev/__OTA_PARTITION_B";
+                        device = "/dev/@@OTA_PARTITION_B@@";
                     }
                 );
                 uboot: (

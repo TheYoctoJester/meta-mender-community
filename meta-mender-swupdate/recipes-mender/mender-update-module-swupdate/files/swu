@@ -23,11 +23,6 @@ set -e
 STATE="$1"
 FILES="$2"
 
-# Must match SWUPDATE_HARDWARE_VERSION in the kas config and the board
-# section + hardware-compatibility list in sw-description.in. Fixed at
-# "1.0" for the demo. Passed as <board>:<revision> to swupdate -H.
-SWU_HWVER="1.0"
-
 swu_path() {
     ls "$FILES"/files/*.swu 2>/dev/null | head -n1
 }
@@ -71,7 +66,10 @@ case "$STATE" in
         [ -n "$swu" ] || { echo "swu module: no .swu file in payload" >&2; exit 1; }
         sel=$(inactive_selection)
         echo "swu module: installing $(basename "$swu") (selection ${sel})"
-        swupdate -i "$swu" -H "${SWU_HWVER}:${SWU_HWVER}" -e "$sel"
+        # No -H: SWUpdate reads board+revision from /etc/hwrevision and matches
+        # the sw-description board section (the MACHINE name) + its
+        # hardware-compatibility list.
+        swupdate -i "$swu" -e "$sel"
         ;;
 
     *)

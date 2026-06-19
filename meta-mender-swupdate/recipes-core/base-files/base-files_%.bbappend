@@ -5,5 +5,5 @@ SRC_URI += " \
 "
 
 do_install:append () {
-    cat ${WORKDIR}/fstab.append >> ${D}${sysconfdir}/fstab
+    cat ${UNPACKDIR}/fstab.append >> ${D}${sysconfdir}/fstab
 }
