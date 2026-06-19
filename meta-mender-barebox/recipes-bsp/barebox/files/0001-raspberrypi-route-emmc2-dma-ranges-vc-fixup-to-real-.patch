@@ -1,0 +1,99 @@
+From: Josef Holzmayr <jester@theyoctojester.info>
+Date: Thu, 19 Jun 2026 00:00:00 +0000
+Subject: [PATCH] raspberrypi: route emmc2 dma-ranges vc-fixup to the real node
+
+On Raspberry Pi 4 the GPU firmware rewrites the emmc2 bus' dma-ranges
+property per SoC revision in the device tree it loads, and barebox
+forwards that value from the VideoCore fdt into the kernel tree via
+register_vc_property_fixup(root, "/emmc2bus", "dma-ranges").
+
+The forward is hardcoded to the path "/emmc2bus", which is the node name
+used by the downstream Raspberry Pi kernel dtb (and hence by the VC fdt).
+barebox' own, mainline-derived device tree names the same node
+"/emmc2-bus@fe000000" (label/alias "emmc2bus"). of_create_node() in the
+fixup therefore does not find the controller's bus node by that path and
+instead creates a brand new, empty "/emmc2bus" node, writing the
+firmware's dma-ranges there. The real emmc2 controller keeps the
+compile-time default dma-ranges.
+
+On boards whose SoC revision needs different DMA constraints than the
+default, Linux then drives emmc2 DMA into the wrong address window and
+the SD card fails to initialise: "mmc1: ADMA error" / "error -5", or,
+with ADMA masked, garbage data reads ("unrecognised SCR structure").
+
+Resolve the destination node through the "emmc2bus" alias (defined by
+both the VC fdt and barebox' tree) when supplied, so the firmware value
+lands on the actual controller bus node regardless of its path. The
+existing path-based behaviour is kept for fixups that pass no alias.
+
+Upstream-Status: Pending
+
+Signed-off-by: Josef Holzmayr <jester@theyoctojester.info>
+---
+ arch/arm/boards/raspberry-pi/rpi-common.c | 28 ++++++++++++++++++-----
+ 1 file changed, 22 insertions(+), 6 deletions(-)
+
+--- a/arch/arm/boards/raspberry-pi/rpi-common.c
++++ b/arch/arm/boards/raspberry-pi/rpi-common.c
+@@ -63,6 +63,7 @@
+ struct rpi_property_fixup_data {
+     const struct device_node* vc_node;
+     const char *propname;
++    const char *dest_alias;
+ };
+
+ static void rpi_set_usbethaddr(void)
+@@ -313,7 +314,20 @@
+ 	struct device_node *node;
+ 	struct property *prop;
+
+-	node = of_create_node(root, fixup->vc_node->full_name);
++	/*
++	 * The VideoCore fdt and barebox' internal device tree may name the
++	 * same node differently (the emmc2 bus is "/emmc2bus" in the vc fdt
++	 * but "/emmc2-bus@fe000000" in the mainline-derived barebox dts).
++	 * When a destination alias is supplied, resolve the target through it
++	 * so the property lands on the real node rather than a freshly created
++	 * phantom one; fall back to the literal vc path otherwise.
++	 */
++	if (fixup->dest_alias)
++		node = of_find_node_by_alias(root, fixup->dest_alias);
++	else
++		node = NULL;
++	if (!node)
++		node = of_create_node(root, fixup->vc_node->full_name);
+ 	if (!node)
+ 		return -ENOMEM;
+
+@@ -326,7 +340,8 @@
+ }
+
+ static int register_vc_property_fixup(struct device_node *root,
+-						 const char *path, const char *propname)
++						 const char *path, const char *propname,
++						 const char *dest_alias)
+ {
+ 	struct device_node *node, *tmp;
+ 	struct rpi_property_fixup_data* fixup_data;
+@@ -338,6 +353,7 @@
+ 		fixup_data = xzalloc(sizeof(*fixup_data));
+ 		fixup_data->vc_node = tmp;
+ 		fixup_data->propname = xstrdup(propname);
++		fixup_data->dest_alias = dest_alias ? xstrdup(dest_alias) : NULL;
+
+ 		of_register_fixup(rpi_vc_fdt_fixup_property, fixup_data);
+ 	} else {
+@@ -373,10 +389,10 @@
+
+ 	register_vc_fixup(root, "/system");
+ 	register_vc_fixup(root, "/axi");
+-	register_vc_property_fixup(root, "/reserved-memory/nvram@0", "reg");
+-	register_vc_property_fixup(root, "/reserved-memory/nvram@0", "status");
++	register_vc_property_fixup(root, "/reserved-memory/nvram@0", "reg", NULL);
++	register_vc_property_fixup(root, "/reserved-memory/nvram@0", "status", NULL);
+ 	register_vc_fixup(root, "/hat");
+-	register_vc_property_fixup(root, "/emmc2bus", "dma-ranges");
++	register_vc_property_fixup(root, "/emmc2bus", "dma-ranges", "emmc2bus");
+ 	register_vc_fixup(root, "/chosen/bootloader");
+ 	chosen = register_vc_fixup(root, "/chosen");
+ 	if (!chosen) {

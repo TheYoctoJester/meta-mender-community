@@ -11,6 +11,14 @@ SRC_URI += " \
     file://dts/mender-bootenv.dtso \
 "
 
+# RPi4: the VideoCore-firmware emmc2 dma-ranges fixup in barebox' RPi board
+# code targets the downstream node name "/emmc2bus", but barebox' own
+# (mainline-derived) tree names it "/emmc2-bus@fe000000", so the firmware's
+# per-SoC DMA constraints never reach the real SD controller and Linux fails
+# to mount the SD (mmc ADMA error -5). Route the fixup through the emmc2bus
+# alias instead. See the patch header for details.
+SRC_URI:append:raspberrypi4-64 = " file://0001-raspberrypi-route-emmc2-dma-ranges-vc-fixup-to-real-.patch"
+
 # dtc compiles the uboot-environment overlay (dtso -> dtbo) into the built-in
 # environment; /env/init/mender applies it to the live tree at startup.
 DEPENDS += "dtc-native"
