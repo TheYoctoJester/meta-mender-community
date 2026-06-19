@@ -18,6 +18,10 @@ IMAGE_DEPENDS = "main-image"
 # images and files that will be included in the .swu image
 SWUPDATE_IMAGES = "main-image-${MACHINE}"
 
+# The deployed/symlinked rootfs is main-image-${MACHINE}.rootfs.ext4.gz
+# (IMAGE_NAME_SUFFIX = ".rootfs" on wrynose), so the fstype the class searches
+# for must include the .rootfs infix. The file lands in the .swu under that
+# same basename, which sw-description references.
 python() {
-  d.appendVarFlag("SWUPDATE_IMAGES_FSTYPES", f"main-image-{d.getVar('MACHINE')}", ".ext4.gz")
+  d.appendVarFlag("SWUPDATE_IMAGES_FSTYPES", f"main-image-{d.getVar('MACHINE')}", ".rootfs.ext4.gz")
 }
