@@ -25,6 +25,12 @@ do_install:append() {
 
 FILES:${PN} += "${sysconfdir}/swupdate.cfg ${sysconfdir}/fw_env.config ${sysconfdir}/hwrevision"
 
+# The swupdate 2026.05 binary embeds a build-path (TMPDIR) reference, which the
+# (now-fatal) buildpaths reproducibility QA check rejects. This is upstream
+# meta-swupdate behaviour, not a functional problem; skip the check for the
+# swupdate package in this demo.
+INSANE_SKIP:${PN} += "buildpaths"
+
 # Buffered iteration installs one-shot via "swupdate -i" from the update
 # module, so the swupdate daemon is not needed. The streaming iteration enables
 # it and adds /usr/lib/swupdate/conf.d/09-swupdate-args (see the layer README).
