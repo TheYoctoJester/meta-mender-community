@@ -1,0 +1,22 @@
+[Unit]
+Description=Seed /data/mender from the rootfs on first boot (SWUpdate-persistent Mender state)
+DefaultDependencies=no
+After=data.mount
+Requires=data.mount
+# Run only on first boot, before anything else touches /data/mender.
+ConditionPathExists=!/data/mender
+# Must populate /data/mender before the var-lib-mender.mount bind-mounts it over
+# /var/lib/mender. If an empty /data/mender wins that race, the bind-mount
+# shadows the rootfs /var/lib/mender/device_type and the client reports none.
+Before=var-lib-mender.mount mender-authd.service mender-updated.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# /var/lib/mender is still the rootfs copy here (the bind-mount is ordered after
+# us), so this captures device_type, the agent key, mender.conf, etc.
+ExecStart=/bin/cp -a /var/lib/mender /data/mender
+ExecStartPost=/bin/chmod 0700 /data/mender
+
+[Install]
+WantedBy=mender-authd.service mender-updated.service

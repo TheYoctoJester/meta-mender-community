@@ -14,6 +14,7 @@ IMAGE_INSTALL:append = " \
     mender-auth \
     mender-update \
     mender-update-module-swupdate \
+    mender-swupdate-data \
     swupdate \
     u-boot-fw-utils \
     u-boot-env \

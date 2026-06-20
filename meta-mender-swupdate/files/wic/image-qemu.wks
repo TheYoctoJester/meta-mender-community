@@ -6,7 +6,9 @@ part / --source rootfs --fstype=ext4 --ondisk vda --label root-a --align 4 --fix
 # rootfs slot B (empty at flash time; populated by the first SWUpdate OTA)
 part --fstype=ext4 --ondisk vda --label root-b --align 4 --fixed-size 256M
 
-# /media (auto-mounted via /etc/fstab)
-part --fstype=ext4 --ondisk vda --label media --align 4 --fixed-size 448M
+# Persistent /data: holds /data/mender (bind-mounted over /var/lib/mender) so
+# Mender state survives the A/B rootfs swap. NOT touched by the SWUpdate install
+# (which writes only the rootfs slots). Auto-mounted at /data via /etc/fstab.
+part --fstype=ext4 --ondisk vda --label data --align 4 --fixed-size 448M
 
 bootloader --ptable msdos --timeout 1
