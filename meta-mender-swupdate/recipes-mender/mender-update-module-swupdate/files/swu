@@ -8,20 +8,28 @@
 # "rootpart" to the new slot via its bootloader handler. Our boot.scr
 # then boots /dev/vda${rootpart} on the next reboot.
 #
+# IMPORTANT: "query" states (ProvidePayloadFileSizes, NeedsArtifactReboot,
+# SupportsRollback, ...) must print ONLY their answer on stdout -- mender
+# parses stdout as the answer. So all human/diagnostic logging goes to
+# STDERR via log() (still captured by mender as "Update Module output
+# (stderr)"), and stdout carries only protocol answers / the installer's
+# own output.
+#
 # ITERATION 1 (this file): buffered. Mender stages the payload to
 # $FILES/files/*.swu before ArtifactInstall; we install it one-shot with
 # "swupdate -i". SWUpdate does NOT need to be running as a daemon.
 #
 # ITERATION 2 (designed, see layer README): streaming. Implement the
 # Download state, read the payload from Mender's stream named pipe, and
-# pipe it straight into "swupdate-client -" (which reads stdin and streams
-# over the /tmp/sockinstctrl IPC socket to a running SWUpdate daemon) so
-# the .swu is never fully staged to disk.
+# pipe it straight into "swupdate-client -" over the IPC socket.
 
 set -e
 
 STATE="$1"
 FILES="$2"
+
+log() { echo "swu module: $*" >&2; }
+booted_root() { findmnt -n -o SOURCE / 2>/dev/null || true; }
 
 swu_path() {
     ls "$FILES"/files/*.swu 2>/dev/null | head -n1
@@ -30,9 +38,7 @@ swu_path() {
 # Pick the SWUpdate sw-description selection (stable,copyN) for the
 # INACTIVE slot: copy1 writes slot A (vda2), copy2 writes slot B (vda3).
 inactive_selection() {
-    local root
-    root=$(findmnt -n -o SOURCE / 2>/dev/null || true)
-    case "$root" in
+    case "$(booted_root)" in
         *vda2) echo "stable,copy2" ;;   # running A -> install B
         *vda3) echo "stable,copy1" ;;   # running B -> install A
         *)     echo "stable,copy2" ;;   # unknown  -> default to B
@@ -41,10 +47,16 @@ inactive_selection() {
 
 case "$STATE" in
 
+    ProvidePayloadFileSizes)
+        # Buffered: we do not use the streaming (file-sizes) download path.
+        # Must print exactly "No" on stdout.
+        echo "No"
+        ;;
+
     NeedsArtifactReboot)
         # SWUpdate flips "rootpart"; Mender must reboot for it to take effect.
-        # Honour an optional "reboot" flag in the artifact meta-data
-        # (swu-artifact-gen --reboot); default to Automatic.
+        # Honour an optional "reboot" flag in the artifact meta-data; default
+        # to Automatic. Answer ("Automatic"/"No") goes to stdout.
         reboot=$(jq -r '.reboot // "true"' "$FILES/header/meta-data" 2>/dev/null || echo "true")
         if [ "$reboot" = "false" ]; then
             echo "No"
@@ -54,46 +66,38 @@ case "$STATE" in
         ;;
 
     SupportsRollback)
-        # Iteration 1 keeps parity with the upstream 'swu' module: no
-        # Mender-driven rollback. Bootloader-level auto-rollback (U-Boot
-        # bootcount/altbootcmd + SWUpdate ustate) is a documented
-        # enhancement, see the layer README.
+        # Parity with the upstream 'swu' module: no Mender-driven rollback.
         echo "No"
         ;;
 
     ArtifactInstall)
         swu=$(swu_path)
-        [ -n "$swu" ] || { echo "swu module: no .swu file in payload" >&2; exit 1; }
+        [ -n "$swu" ] || { log "ArtifactInstall: no .swu file in payload"; exit 1; }
         sel=$(inactive_selection)
-        echo "swu module: ArtifactInstall installing $(basename "$swu") (selection ${sel}, root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        log "ArtifactInstall installing $(basename "$swu") (selection ${sel}, root=$(booted_root))"
         # No -H: SWUpdate reads board+revision from /etc/hwrevision and matches
-        # the sw-description board section (the MACHINE name) + its
-        # hardware-compatibility list.
+        # the sw-description board section + its hardware-compatibility list.
         swupdate -i "$swu" -e "$sel"
         ;;
 
     ArtifactVerifyReboot)
-        # Post-reboot: we expect to be running from the slot SWUpdate just
-        # wrote. Log the booted rootfs so the OTA flow is traceable; do not
-        # hard-fail (the demo has no slot<->bank map to assert against, and a
-        # mismatch should surface as a deliberate decision, not a silent abort).
-        echo "swu module: ArtifactVerifyReboot (booted root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        # Post-reboot: log the booted rootfs so the OTA flow is traceable; do
+        # not hard-fail (no slot<->bank map to assert against).
+        log "ArtifactVerifyReboot (booted root=$(booted_root))"
         ;;
 
     ArtifactCommit)
-        # The new rootfs booted; nothing to persist beyond the rootpart switch
-        # SWUpdate already made. Logged so the post-reboot resume is visible.
-        echo "swu module: ArtifactCommit (root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        log "ArtifactCommit (root=$(booted_root))"
         ;;
 
     ArtifactRollback)
-        echo "swu module: ArtifactRollback (root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        log "ArtifactRollback (root=$(booted_root))"
         ;;
 
     *)
-        # ArtifactReboot is Automatic; Download / *Enter / *Leave / Cleanup
-        # need no action in the buffered iteration. Logged for traceability.
-        echo "swu module: ${STATE} (no-op)"
+        # Download / *Enter / *Leave / Cleanup etc.: no action in the buffered
+        # iteration. Log to stderr only -- never pollute a query state's stdout.
+        log "${STATE} (no-op)"
         ;;
 esac
 
