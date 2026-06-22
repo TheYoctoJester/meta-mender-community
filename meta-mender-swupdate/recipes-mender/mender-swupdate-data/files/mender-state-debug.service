@@ -1,0 +1,13 @@
+[Unit]
+Description=DEBUG: log mender persistent-state mount + store on each boot
+After=var-lib-mender.mount data.mount mender-swupdate-data-seed.service
+Before=mender-authd.service mender-updated.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'echo "MENDER-DEBUG mounts:"; grep -E "mender| /data " /proc/mounts || echo "  (no mender/data mounts)"; echo "MENDER-DEBUG /var/lib/mender:"; ls -la /var/lib/mender 2>&1; echo "MENDER-DEBUG /data/mender:"; ls -la /data/mender 2>&1'
+
+[Install]
+WantedBy=mender-updated.service

@@ -5,10 +5,13 @@ After=data.mount
 Requires=data.mount
 # Run only on first boot, before anything else touches /data/mender.
 ConditionPathExists=!/data/mender
-# Must populate /data/mender before the var-lib-mender.mount bind-mounts it over
-# /var/lib/mender. If an empty /data/mender wins that race, the bind-mount
-# shadows the rootfs /var/lib/mender/device_type and the client reports none.
-Before=var-lib-mender.mount mender-authd.service mender-updated.service
+# Must populate /data/mender before (a) meta-mender's mender-data-dir.service,
+# which otherwise mkdir's an *empty* /data/mender first (its
+# ConditionPathExists=!/data/mender then also blocks this seed), and (b) the
+# var-lib-mender.mount that bind-mounts /data/mender over /var/lib/mender. If an
+# empty /data/mender wins that race, the bind-mount shadows the rootfs
+# /var/lib/mender and the Mender state DB never persists across the A/B swap.
+Before=var-lib-mender.mount mender-data-dir.service mender-authd.service mender-updated.service
 
 [Service]
 Type=oneshot
