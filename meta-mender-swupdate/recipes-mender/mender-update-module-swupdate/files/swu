@@ -65,16 +65,35 @@ case "$STATE" in
         swu=$(swu_path)
         [ -n "$swu" ] || { echo "swu module: no .swu file in payload" >&2; exit 1; }
         sel=$(inactive_selection)
-        echo "swu module: installing $(basename "$swu") (selection ${sel})"
+        echo "swu module: ArtifactInstall installing $(basename "$swu") (selection ${sel}, root=$(findmnt -n -o SOURCE / 2>/dev/null))"
         # No -H: SWUpdate reads board+revision from /etc/hwrevision and matches
         # the sw-description board section (the MACHINE name) + its
         # hardware-compatibility list.
         swupdate -i "$swu" -e "$sel"
         ;;
 
+    ArtifactVerifyReboot)
+        # Post-reboot: we expect to be running from the slot SWUpdate just
+        # wrote. Log the booted rootfs so the OTA flow is traceable; do not
+        # hard-fail (the demo has no slot<->bank map to assert against, and a
+        # mismatch should surface as a deliberate decision, not a silent abort).
+        echo "swu module: ArtifactVerifyReboot (booted root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        ;;
+
+    ArtifactCommit)
+        # The new rootfs booted; nothing to persist beyond the rootpart switch
+        # SWUpdate already made. Logged so the post-reboot resume is visible.
+        echo "swu module: ArtifactCommit (root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        ;;
+
+    ArtifactRollback)
+        echo "swu module: ArtifactRollback (root=$(findmnt -n -o SOURCE / 2>/dev/null))"
+        ;;
+
     *)
         # ArtifactReboot is Automatic; Download / *Enter / *Leave / Cleanup
-        # need no action in the buffered iteration.
+        # need no action in the buffered iteration. Logged for traceability.
+        echo "swu module: ${STATE} (no-op)"
         ;;
 esac
 
