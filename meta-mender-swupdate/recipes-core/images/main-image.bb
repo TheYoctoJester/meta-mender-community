@@ -32,15 +32,3 @@ swupdate_stash_mender_factory() {
     fi
 }
 
-# DEBUG AID (OTA bring-up): forward the journal to the serial console so the
-# mender-auth / mender-update state-machine logs (which otherwise only go to
-# journald) are visible in the captured runqemu serial. Remove once green.
-ROOTFS_POSTPROCESS_COMMAND += "swupdate_forward_journal_to_console;"
-swupdate_forward_journal_to_console() {
-    install -d ${IMAGE_ROOTFS}${sysconfdir}/systemd/journald.conf.d
-    cat > ${IMAGE_ROOTFS}${sysconfdir}/systemd/journald.conf.d/forward-to-console.conf <<'EOF'
-[Journal]
-ForwardToConsole=yes
-MaxLevelConsole=info
-EOF
-}

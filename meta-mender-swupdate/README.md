@@ -44,6 +44,30 @@ its on-device update mechanism.
 | vda4 | /media | ext4 | 448M | media  |  persistent
 ```
 
+## OTA round-trip status (as of 2026-06-23)
+
+The demo builds, boots, and **boot-smokes green** in CI. A full server-driven OTA
+round-trip against hosted.mender.io was wired (see `mender-integration-builds`,
+the "Capability C" job step + `hardware-test/tools/qemu_swupdate_ota.py`) and is
+**proven through install + reboot + A/B slot switch**: the device enrols, is
+accepted, reports inventory, the `swu` module runs `swupdate -i` to write the
+inactive slot and flip the U-Boot `rootpart`, and the device cleanly reboots into
+the new slot and reaches login.
+
+**The post-reboot commit does not yet complete.** mender's runtime state (agent
+key + state DB under `/var/lib/mender`) is not persisting across the rootfs A/B
+swap — `mender-auth` regenerates its key on every boot ("No key in memory:
+Error loading private key from /var/lib/mender/mender-agent.pem"), so each boot
+re-enrols a fresh identity and re-installs, and the deployment never moves past
+`rebooting`. This persists even with vda4 mounted **directly** at
+`/var/lib/mender` (so it is not a bind-mount artefact) while a plain seed `cp`
+into the same directory *does* persist — i.e. mender-auth is not landing its
+keystore on the partition here. Root-causing this needs live inspection of a
+running guest (whether `mender-agent.pem` is actually written after mender-auth
+runs); it is parked pending that. The persistence plumbing
+(`mender-swupdate-data` + factory-seed) and the module's post-reboot states are
+kept in place for when it resumes.
+
 ## Buffered vs streaming
 
 - **Iteration 1 (this layer's module, buffered).** Mender stages the payload to

@@ -12,7 +12,6 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = " \
     file://mender-swupdate-data-seed.service \
-    file://mender-state-debug.service \
 "
 
 S = "${UNPACKDIR}"
@@ -21,19 +20,14 @@ inherit systemd allarch
 
 RDEPENDS:${PN} += "systemd"
 # The seed populates the freshly-mounted (empty) /var/lib/mender on first boot.
-# mender-state-debug is a temporary OTA bring-up aid logging the mount + store
-# state on each boot.
-SYSTEMD_SERVICE:${PN} = "mender-swupdate-data-seed.service mender-state-debug.service"
+SYSTEMD_SERVICE:${PN} = "mender-swupdate-data-seed.service"
 
 do_install() {
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/mender-swupdate-data-seed.service \
         ${D}${systemd_system_unitdir}/mender-swupdate-data-seed.service
-    install -m 0644 ${UNPACKDIR}/mender-state-debug.service \
-        ${D}${systemd_system_unitdir}/mender-state-debug.service
 }
 
 FILES:${PN} += " \
     ${systemd_system_unitdir}/mender-swupdate-data-seed.service \
-    ${systemd_system_unitdir}/mender-state-debug.service \
 "
