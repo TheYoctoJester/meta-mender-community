@@ -4,12 +4,18 @@ SRC_URI:append = " \
     file://swupdate.cfg \
     file://fw_env.config \
     file://defconfig \
+    file://10-swupdate-args \
 "
 
 do_install:append() {
     install -d ${D}${sysconfdir}
 
     install -m 0644 ${UNPACKDIR}/swupdate.cfg ${D}${sysconfdir}/swupdate.cfg
+
+    # Daemon args allow-list (sourced by swupdate.sh): permit the A/B
+    # sw-description selections for IPC installs (see file header).
+    install -d ${D}${libdir}/swupdate/conf.d
+    install -m 0644 ${UNPACKDIR}/10-swupdate-args ${D}${libdir}/swupdate/conf.d/10-swupdate-args
 
     # /etc/fw_env.config (CONFIG_UBOOT_FWENV): libubootenv (used by SWUpdate's
     # U-Boot bootloader handler) reads this to locate the U-Boot env -- here,
@@ -23,7 +29,7 @@ do_install:append() {
     echo "${MACHINE} ${SWUPDATE_HARDWARE_VERSION}" > ${D}${sysconfdir}/hwrevision
 }
 
-FILES:${PN} += "${sysconfdir}/swupdate.cfg ${sysconfdir}/fw_env.config ${sysconfdir}/hwrevision"
+FILES:${PN} += "${sysconfdir}/swupdate.cfg ${sysconfdir}/fw_env.config ${sysconfdir}/hwrevision ${libdir}/swupdate/conf.d/10-swupdate-args"
 
 # The swupdate 2026.05 binary embeds a build-path (TMPDIR) reference, which the
 # (now-fatal) buildpaths reproducibility QA check rejects. This is upstream

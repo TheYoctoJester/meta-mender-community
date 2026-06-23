@@ -1,0 +1,9 @@
+# SWUpdate daemon args (sourced by swupdate.sh into SWUPDATE_ARGS).
+#
+# Permit the A/B sw-description selections for IPC installs. When SWUpdate runs
+# as a daemon it rejects any selection not on this allow-list:
+#   "is_selection_allowed: Selection stable,copyN is not allowed, rejected"
+# (-> swupdate_async_start returns -1 in swupdate-client). The swu Update Module
+# streams the .swu into the daemon with "-e stable,copyN" during Mender's
+# Download state, so both A/B targets must be accepted here.
+SWUPDATE_ARGS="${SWUPDATE_ARGS} -q stable,copy1 -q stable,copy2"
