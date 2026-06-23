@@ -20,10 +20,21 @@ IMAGE_INSTALL:append = " \
     u-boot-env \
 "
 
+# vda4 mounts directly at /var/lib/mender for OTA-persistent Mender state, which
+# shadows the build-time /var/lib/mender (device_type + persistent mender.conf
+# from meta-mender). Stash a factory copy so the first-boot seed service can
+# populate the initially-empty partition with the device identity.
+ROOTFS_POSTPROCESS_COMMAND += "swupdate_stash_mender_factory;"
+swupdate_stash_mender_factory() {
+    install -d ${IMAGE_ROOTFS}/usr/lib/mender-factory
+    if [ -d ${IMAGE_ROOTFS}/var/lib/mender ]; then
+        cp -a ${IMAGE_ROOTFS}/var/lib/mender/. ${IMAGE_ROOTFS}/usr/lib/mender-factory/
+    fi
+}
+
 # DEBUG AID (OTA bring-up): forward the journal to the serial console so the
 # mender-auth / mender-update state-machine logs (which otherwise only go to
-# journald) are visible in the captured runqemu serial -- needed to see why the
-# post-reboot ArtifactCommit does not complete. Remove once the OTA is green.
+# journald) are visible in the captured runqemu serial. Remove once green.
 ROOTFS_POSTPROCESS_COMMAND += "swupdate_forward_journal_to_console;"
 swupdate_forward_journal_to_console() {
     install -d ${IMAGE_ROOTFS}${sysconfdir}/systemd/journald.conf.d

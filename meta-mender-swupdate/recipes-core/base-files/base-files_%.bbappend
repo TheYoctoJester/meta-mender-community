@@ -6,6 +6,7 @@ SRC_URI += " \
 
 do_install:append () {
     cat ${UNPACKDIR}/fstab.append >> ${D}${sysconfdir}/fstab
-    # Mount points for the fstab entries above.
-    install -d -m 0755 ${D}/boot ${D}/data
+    # /boot mount point (/var/lib/mender is provided by the mender packages and
+    # is where vda4 mounts directly for OTA-persistent Mender state).
+    install -d -m 0755 ${D}/boot
 }

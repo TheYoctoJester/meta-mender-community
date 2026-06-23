@@ -1,25 +1,18 @@
 [Unit]
-Description=Seed /data/mender from the rootfs on first boot (SWUpdate-persistent Mender state)
+Description=Seed /var/lib/mender from the factory copy on first boot (persistent Mender state)
 DefaultDependencies=no
-After=data.mount
-Requires=data.mount
-# Run only on first boot, before anything else touches /data/mender.
-ConditionPathExists=!/data/mender
-# Must populate /data/mender before (a) meta-mender's mender-data-dir.service,
-# which otherwise mkdir's an *empty* /data/mender first (its
-# ConditionPathExists=!/data/mender then also blocks this seed), and (b) the
-# var-lib-mender.mount that bind-mounts /data/mender over /var/lib/mender. If an
-# empty /data/mender wins that race, the bind-mount shadows the rootfs
-# /var/lib/mender and the Mender state DB never persists across the A/B swap.
-Before=var-lib-mender.mount mender-data-dir.service mender-authd.service mender-updated.service
+After=var-lib-mender.mount
+Requires=var-lib-mender.mount
+# vda4 mounts directly at /var/lib/mender; on first boot it is empty (no
+# device_type). Populate it from the build-time factory copy. Runs once.
+ConditionPathExists=!/var/lib/mender/device_type
+Before=mender-data-dir.service mender-authd.service mender-updated.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# /var/lib/mender is still the rootfs copy here (the bind-mount is ordered after
-# us), so this captures device_type, the agent key, mender.conf, etc.
-ExecStart=/bin/cp -a /var/lib/mender /data/mender
-ExecStartPost=/bin/chmod 0700 /data/mender
+ExecStart=/bin/sh -c 'cp -a /usr/lib/mender-factory/. /var/lib/mender/'
+ExecStartPost=/bin/chmod 0700 /var/lib/mender
 
 [Install]
 WantedBy=mender-authd.service mender-updated.service

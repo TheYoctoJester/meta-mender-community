@@ -1,2 +1,2 @@
-/dev/vda1  /boot  vfat  defaults       0  0
-/dev/vda4  /data  ext4  defaults,nofail 0  2
+/dev/vda1  /boot           vfat  defaults        0  0
+/dev/vda4  /var/lib/mender ext4  defaults,nofail 0  2
