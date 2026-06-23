@@ -31,7 +31,10 @@ FILES:${PN} += "${sysconfdir}/swupdate.cfg ${sysconfdir}/fw_env.config ${sysconf
 # swupdate package in this demo.
 INSANE_SKIP:${PN} += "buildpaths"
 
-# Buffered iteration installs one-shot via "swupdate -i" from the update
-# module, so the swupdate daemon is not needed. The streaming iteration enables
-# it and adds /usr/lib/swupdate/conf.d/09-swupdate-args (see the layer README).
-SYSTEMD_AUTO_ENABLE = "disable"
+# Streaming iteration: run SWUpdate as a daemon so the swu Update Module can
+# stream the payload into it over the IPC control socket (/tmp/sockinstctrl)
+# during Mender's Download state. swupdate.service runs swupdate.sh -> swupdate
+# with no -i and no webserver/suricatta args (we ship no conf.d/* mode), i.e. a
+# plain IPC-listening daemon. swupdate-client (shipped by the swupdate-client
+# package, installed in main-image) connects to that socket.
+SYSTEMD_AUTO_ENABLE = "enable"

@@ -2,31 +2,30 @@
 #
 # Mender Update Module "swu": deploy a SWUpdate .swu image through Mender.
 #
-# Mender owns deployment orchestration + the reboot. SWUpdate owns the
-# actual update work: it writes the rootfs to the INACTIVE A/B slot (raw
-# + zlib, per the .swu sw-description) and sets the U-Boot env variable
-# "rootpart" to the new slot via its bootloader handler. Our boot.scr
-# then boots /dev/vda${rootpart} on the next reboot.
+# Mender owns deployment orchestration + the reboot. SWUpdate owns the actual
+# update work: it writes the rootfs to the INACTIVE A/B slot (raw + zlib, per
+# the .swu sw-description) and sets the U-Boot env variable "rootpart" to the
+# new slot via its bootloader handler. Our boot.scr then boots
+# /dev/vda${rootpart} on the next reboot.
+#
+# STREAMING (this file): the payload is streamed straight from Mender's
+# Download named pipes into the running SWUpdate *daemon* over its IPC control
+# socket (swupdate-client), so the .swu is never fully staged to disk. If the
+# streams are not consumed in Download (e.g. the daemon is down), Mender stages
+# the payload to files/ and ArtifactInstall falls back to a one-shot
+# "swupdate -i" buffered install.
 #
 # IMPORTANT: "query" states (ProvidePayloadFileSizes, NeedsArtifactReboot,
-# SupportsRollback, ...) must print ONLY their answer on stdout -- mender
-# parses stdout as the answer. So all human/diagnostic logging goes to
-# STDERR via log() (still captured by mender as "Update Module output
-# (stderr)"), and stdout carries only protocol answers / the installer's
-# own output.
-#
-# ITERATION 1 (this file): buffered. Mender stages the payload to
-# $FILES/files/*.swu before ArtifactInstall; we install it one-shot with
-# "swupdate -i". SWUpdate does NOT need to be running as a daemon.
-#
-# ITERATION 2 (designed, see layer README): streaming. Implement the
-# Download state, read the payload from Mender's stream named pipe, and
-# pipe it straight into "swupdate-client -" over the IPC socket.
+# SupportsRollback) must print ONLY their answer on stdout -- Mender parses
+# stdout as the answer. All human/diagnostic logging goes to STDERR via log()
+# (still captured by Mender as "Update Module output (stderr)").
 
 set -e
 
 STATE="$1"
 FILES="$2"
+
+SWU_IPC_SOCKET="${SWU_IPC_SOCKET:-/tmp/sockinstctrl}"
 
 log() { echo "swu module: $*" >&2; }
 booted_root() { findmnt -n -o SOURCE / 2>/dev/null || true; }
@@ -35,8 +34,8 @@ swu_path() {
     ls "$FILES"/files/*.swu 2>/dev/null | head -n1
 }
 
-# Pick the SWUpdate sw-description selection (stable,copyN) for the
-# INACTIVE slot: copy1 writes slot A (vda2), copy2 writes slot B (vda3).
+# Pick the SWUpdate sw-description selection (stable,copyN) for the INACTIVE
+# slot: copy1 writes slot A (vda2), copy2 writes slot B (vda3).
 inactive_selection() {
     case "$(booted_root)" in
         *vda2) echo "stable,copy2" ;;   # running A -> install B
@@ -48,15 +47,59 @@ inactive_selection() {
 case "$STATE" in
 
     ProvidePayloadFileSizes)
-        # Buffered: we do not use the streaming (file-sizes) download path.
-        # Must print exactly "No" on stdout.
+        # We use the plain streaming Download (no file sizes needed); print "No"
+        # so Mender calls Download (not DownloadWithFileSizes).
         echo "No"
         ;;
 
+    Download)
+        # STREAMING: read Mender's stream-next pipe in a loop; for each payload
+        # stream, hand its named pipe straight to swupdate-client, which streams
+        # it over the IPC socket to the running SWUpdate daemon. Consuming the
+        # streams here means Mender does NOT populate files/, so the .swu never
+        # lands on disk.
+        #
+        # NOTE on the Mender "do not install in Download" guidance (checksums
+        # verify as the stream completes): for an A/B update this is acceptable
+        # -- SWUpdate writes only the INACTIVE slot here, which is activated
+        # (rootpart) and booted only after Mender's verification + the
+        # reboot/commit, so a truncated/bad stream never reaches a booted system
+        # (swupdate-client also fails, aborting the deployment).
+        for _ in $(seq 1 60); do [ -S "$SWU_IPC_SOCKET" ] && break; sleep 1; done
+        if [ ! -S "$SWU_IPC_SOCKET" ]; then
+            log "Download: SWUpdate IPC socket $SWU_IPC_SOCKET absent (daemon not running); leaving streams for buffered ArtifactInstall"
+            exit 0
+        fi
+        sel=$(inactive_selection)
+        log "Download: streaming into the swupdate daemon (selection ${sel}, root=$(booted_root))"
+        exec 3< "$FILES/stream-next"
+        while IFS= read -r rel <&3; do
+            [ -n "$rel" ] || break          # zero-length read => no more streams
+            log "Download: streaming ${rel}"
+            swupdate-client -e "$sel" -s "$SWU_IPC_SOCKET" "$FILES/$rel" \
+                || { log "Download: swupdate-client failed on ${rel}"; exit 1; }
+        done
+        exec 3<&-
+        log "Download: streaming install complete"
+        ;;
+
+    ArtifactInstall)
+        # Streaming already installed during Download (files/ is then absent).
+        # If Mender staged the payload to files/ instead, do a buffered install.
+        swu=$(swu_path)
+        if [ -n "$swu" ]; then
+            sel=$(inactive_selection)
+            log "ArtifactInstall: buffered install of $(basename "$swu") (selection ${sel}, root=$(booted_root))"
+            swupdate -i "$swu" -e "$sel"
+        else
+            log "ArtifactInstall: no-op (already installed via streaming in Download)"
+        fi
+        ;;
+
     NeedsArtifactReboot)
-        # SWUpdate flips "rootpart"; Mender must reboot for it to take effect.
-        # Honour an optional "reboot" flag in the artifact meta-data; default
-        # to Automatic. Answer ("Automatic"/"No") goes to stdout.
+        # SWUpdate flipped "rootpart"; Mender must reboot for it to take effect.
+        # Honour an optional "reboot" flag in the artifact meta-data; default to
+        # Automatic. Answer ("Automatic"/"No") goes to stdout.
         reboot=$(jq -r '.reboot // "true"' "$FILES/header/meta-data" 2>/dev/null || echo "true")
         if [ "$reboot" = "false" ]; then
             echo "No"
@@ -66,23 +109,10 @@ case "$STATE" in
         ;;
 
     SupportsRollback)
-        # Parity with the upstream 'swu' module: no Mender-driven rollback.
         echo "No"
         ;;
 
-    ArtifactInstall)
-        swu=$(swu_path)
-        [ -n "$swu" ] || { log "ArtifactInstall: no .swu file in payload"; exit 1; }
-        sel=$(inactive_selection)
-        log "ArtifactInstall installing $(basename "$swu") (selection ${sel}, root=$(booted_root))"
-        # No -H: SWUpdate reads board+revision from /etc/hwrevision and matches
-        # the sw-description board section + its hardware-compatibility list.
-        swupdate -i "$swu" -e "$sel"
-        ;;
-
     ArtifactVerifyReboot)
-        # Post-reboot: log the booted rootfs so the OTA flow is traceable; do
-        # not hard-fail (no slot<->bank map to assert against).
         log "ArtifactVerifyReboot (booted root=$(booted_root))"
         ;;
 
@@ -95,8 +125,7 @@ case "$STATE" in
         ;;
 
     *)
-        # Download / *Enter / *Leave / Cleanup etc.: no action in the buffered
-        # iteration. Log to stderr only -- never pollute a query state's stdout.
+        # *Enter / *Leave / Cleanup etc.: no action. stderr only.
         log "${STATE} (no-op)"
         ;;
 esac

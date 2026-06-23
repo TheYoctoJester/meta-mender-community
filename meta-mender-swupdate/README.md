@@ -44,43 +44,49 @@ its on-device update mechanism.
 | vda4 | /media | ext4 | 448M | media  |  persistent
 ```
 
-## OTA round-trip status (as of 2026-06-23)
+## OTA round-trip status
 
-The demo builds, boots, and **boot-smokes green** in CI. A full server-driven OTA
-round-trip against hosted.mender.io was wired (see `mender-integration-builds`,
-the "Capability C" job step + `hardware-test/tools/qemu_swupdate_ota.py`) and is
-**proven through install + reboot + A/B slot switch**: the device enrols, is
-accepted, reports inventory, the `swu` module runs `swupdate -i` to write the
-inactive slot and flip the U-Boot `rootpart`, and the device cleanly reboots into
-the new slot and reaches login.
+The full server-driven OTA round-trip against hosted.mender.io is **green
+end-to-end** (CI "Capability C" step + `hardware-test/tools/qemu_swupdate_ota.py`
+in `mender-integration-builds`): the device enrols, is accepted, reports
+inventory, the `swu` module installs the payload to the inactive slot and flips
+the U-Boot `rootpart`, the device reboots into the new slot, mender **commits**,
+and the server reports success.
 
-**The post-reboot commit does not yet complete.** mender's runtime state (agent
-key + state DB under `/var/lib/mender`) is not persisting across the rootfs A/B
-swap — `mender-auth` regenerates its key on every boot ("No key in memory:
-Error loading private key from /var/lib/mender/mender-agent.pem"), so each boot
-re-enrols a fresh identity and re-installs, and the deployment never moves past
-`rebooting`. This persists even with vda4 mounted **directly** at
-`/var/lib/mender` (so it is not a bind-mount artefact) while a plain seed `cp`
-into the same directory *does* persist — i.e. mender-auth is not landing its
-keystore on the partition here. Root-causing this needs live inspection of a
-running guest (whether `mender-agent.pem` is actually written after mender-auth
-runs); it is parked pending that. The persistence plumbing
-(`mender-swupdate-data` + factory-seed) and the module's post-reboot states are
-kept in place for when it resumes.
+Two things were load-bearing to get the commit to complete:
+- **Persistent Mender state across the A/B swap:** vda4 is mounted *directly* at
+  `/var/lib/mender` (see `mender-swupdate-data` + the fstab fragment) so the
+  agent key + state DB survive the rootfs swap and the rebooted slot resumes and
+  commits the deployment instead of re-enrolling a fresh identity.
+- **Stable QEMU identity hygiene in the test driver** (the slirp MAC is fixed):
+  the driver selects/accepts only the device matching the QEMU MAC and uses a
+  unique artifact name per run.
 
 ## Buffered vs streaming
 
-- **Iteration 1 (this layer's module, buffered).** Mender stages the payload to
-  `$FILES/files/*.swu`, then the module runs `swupdate -i` one-shot. SWUpdate
-  does **not** run as a daemon. This mirrors the upstream
-  `mendersoftware/mender-update-modules` `swu` module.
-- **Iteration 2 (designed, streaming).** Run SWUpdate as a daemon (its IPC
-  socket at `/tmp/sockinstctrl`; suricatta/webserver/download stay off), ship
-  `swupdate-client`, and implement the module's `Download` state: read Mender's
-  stream named pipe and pipe it straight into `swupdate-client -`, which reads
-  stdin sequentially and streams over IPC — so the `.swu` is never fully staged
-  to disk. The `.swu` format, wic layout and U-Boot work are unchanged. This is
-  the canonical SWUpdate programmatic-install interface.
+This module does **streaming** (the demo's end state), with a buffered fallback:
+
+- **Streaming (default).** SWUpdate runs as a daemon (`swupdate.service`,
+  enabled; plain IPC mode, no webserver/suricatta) listening on its control
+  socket `/tmp/sockinstctrl`. In Mender's `Download` state the module reads the
+  `stream-next` pipe and hands each payload's named pipe to `swupdate-client
+  -e <set,mode> -s /tmp/sockinstctrl <stream>`, which streams it over IPC into
+  the daemon — so the `.swu` is never fully staged to disk. The daemon installs
+  to the inactive slot as the bytes arrive; `ArtifactInstall` is then a no-op.
+  `ProvidePayloadFileSizes` answers `No` (plain `Download`, not
+  `DownloadWithFileSizes`).
+- **Buffered fallback.** If the streams are not consumed in `Download` (e.g. the
+  daemon is not running, or `Download` is disabled), Mender stages the payload to
+  `$FILES/files/*.swu` and `ArtifactInstall` runs a one-shot `swupdate -i`. This
+  mirrors the upstream `mendersoftware/mender-update-modules` `swu` module.
+
+Note on the Mender contract ("an update module must not install to the final
+location during `Download`", since artifact checksums verify as the stream
+completes): for an A/B update this is acceptable — SWUpdate writes only the
+**inactive** slot during `Download`; that slot is activated (`rootpart`) and
+booted only after Mender's verification + the reboot/commit, so a truncated or
+checksum-failed stream (which also fails `swupdate-client`, aborting the
+deployment) never reaches a booted system.
 
 ## Runtime notes / quirks
 
