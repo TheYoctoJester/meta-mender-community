@@ -37,4 +37,12 @@ INSANE_SKIP:${PN} += "buildpaths"
 # with no -i and no webserver/suricatta args (we ship no conf.d/* mode), i.e. a
 # plain IPC-listening daemon. swupdate-client (shipped by the swupdate-client
 # package, installed in main-image) connects to that socket.
+#
+# Enable ONLY swupdate.service (the standalone daemon), NOT swupdate.socket:
+# meta-swupdate ships both, but enabling both makes the boot-started daemon and
+# systemd's socket unit both try to own /tmp/sockinstctrl -> the daemon cannot
+# bind it -> swupdate-client gets "swupdate_async_start returns -1" (seen in run
+# #2336). With only the standalone service, the daemon creates + owns the socket
+# and the client connects cleanly.
+SYSTEMD_SERVICE:${PN} = "swupdate.service"
 SYSTEMD_AUTO_ENABLE = "enable"
