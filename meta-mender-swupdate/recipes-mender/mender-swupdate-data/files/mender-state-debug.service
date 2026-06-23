@@ -7,7 +7,7 @@ DefaultDependencies=no
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'echo "MENDER-DEBUG mounts:"; grep -E "mender| /data " /proc/mounts || echo "  (no mender/data mounts)"; echo "MENDER-DEBUG /var/lib/mender:"; ls -la /var/lib/mender 2>&1; echo "MENDER-DEBUG /data/mender:"; ls -la /data/mender 2>&1'
+ExecStart=/bin/sh -c 'echo "MENDER-DEBUG mounts:"; grep -E "mender| /data " /proc/mounts; echo "MENDER-DEBUG mender.conf (/etc):"; cat /etc/mender/mender.conf 2>&1; echo "MENDER-DEBUG DataStore grep:"; grep -rni "datastore\|RootfsPart\|/data" /etc/mender/ 2>&1; echo "MENDER-DEBUG find /var/lib/mender:"; find /var/lib/mender -maxdepth 3 2>&1; echo "MENDER-DEBUG find /data:"; find /data -maxdepth 3 2>&1; echo "MENDER-DEBUG existing mender-store anywhere:"; find / -xdev \( -name "mender-store*" -o -name "*.mdb" \) 2>/dev/null'
 
 [Install]
 WantedBy=mender-updated.service
