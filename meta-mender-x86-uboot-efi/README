@@ -126,9 +126,9 @@ Mender state on /data: mender-explicit-wic disables the mender-image feature,
 which is what normally relocates /var/lib/mender onto the persistent data
 partition. Without that, the Mender state DB and agent key live on the rootfs
 and are replaced by an A/B update, so the post-reboot ArtifactCommit cannot
-resume and the deployment stays stuck at "rebooting". The mender-x86-efi-data
-recipe seeds /data/mender from the build-time /var/lib/mender on first boot and
-bind-mounts it over /var/lib/mender (same pattern as meta-mender-rauc), so the
+resume and the deployment stays stuck at "rebooting". The mender-data-persist
+recipe (in meta-mender-demos-common) seeds /data/mender from the build-time
+/var/lib/mender on first boot and bind-mounts it over /var/lib/mender, so the
 state survives the slot switch and the OTA commits cleanly. Verified end-to-end
 on qemux86-64 against hosted.mender.io: install -> reboot (slot A -> B) ->
 commit -> deployment Success.

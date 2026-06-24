@@ -20,7 +20,7 @@ IMAGE_INSTALL = " \
     mender-configure \
     mender-connect \
     mender-update-module-efibootmgr \
-    mender-efibootmgr-data \
+    mender-data-persist \
     efibootmgr \
     efivar \
     util-linux \
@@ -43,7 +43,8 @@ IMAGE_BOOT_FILES = " \
     bzImage;EFI/mender-b/bzImage.efi \
 "
 
-# Persistent Mender state lives on the data partition (see mender-efibootmgr-data).
+# Persistent Mender state lives on the data partition (see mender-data-persist
+# in meta-mender-demos-common).
 MENDER_DATA_PART = "/dev/disk/by-partlabel/data"
 
 IMAGE_OVERHEAD_FACTOR = "1.3"

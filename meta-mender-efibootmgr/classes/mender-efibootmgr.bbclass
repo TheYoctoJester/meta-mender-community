@@ -8,7 +8,7 @@
 # image/partition generation is replaced by an explicit WKS file -- the same
 # approach as meta-mender-explicit-wic, but tailored to this boot chain.
 #
-# Mender state persistence is handled by the mender-efibootmgr-data recipe
+# Mender state persistence is handled by the mender-data-persist recipe
 # (bind-mount of /data/mender over /var/lib/mender), because disabling
 # mender-image removes meta-mender's usual /var/lib/mender relocation.
 

@@ -14,3 +14,12 @@ do_install:append() {
 }
 
 RDEPENDS:${PN} = " ca-certificates"
+
+# wrynose meta-mender (6.0.0) ships a broken version-inventory-script: it installs
+# /usr/share/mender/inventory/mender-inventory-client-version but does not package
+# the file, so the mender recipe's do_package QA fails. The client-only demos do
+# not need the mender_client_version inventory attribute, so drop the offending
+# PACKAGECONFIG entries here -- centralised for every meta-mender-client-only
+# consumer instead of being repeated in each demo's kas config (rauc, swupdate).
+# A no-op if the entries are not present.
+PACKAGECONFIG:remove = "version-inventory-script version-inventory-script-strict"

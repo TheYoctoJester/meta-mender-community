@@ -153,9 +153,9 @@ Mender state on /data: this layer disables the mender-image feature, which is
 what normally relocates /var/lib/mender onto the persistent data partition.
 Without that the Mender state DB and agent key live on the rootfs and are
 replaced by an A/B update, so the post-reboot ArtifactCommit cannot resume and
-the deployment stays stuck at "rebooting". The mender-efibootmgr-data recipe
-seeds /data/mender from the build-time /var/lib/mender on first boot and
-bind-mounts it over /var/lib/mender (same pattern as meta-mender-x86-uboot-efi),
+the deployment stays stuck at "rebooting". The mender-data-persist recipe
+(in meta-mender-demos-common) seeds /data/mender from the build-time
+/var/lib/mender on first boot and bind-mounts it over /var/lib/mender,
 so the state survives the slot switch and the OTA commits cleanly.
 
 Verifying an update
