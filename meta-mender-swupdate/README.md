@@ -53,6 +53,12 @@ inventory, the `swu` module installs the payload to the inactive slot and flips
 the U-Boot `rootpart`, the device reboots into the new slot, mender **commits**,
 and the server reports success.
 
+The CI step boots the v1 image under `runqemu` with a 3-attempt startup-grace
+retry (a transient launcher death right after the multi-GB build/deploy is
+retried; the OTA round-trip itself is not), then drives the deployment. Last
+confirmed green in `mender-integration-builds` run #2344 (boot attempt 1/3,
+deployment `pending → rebooting → finished`, success=1).
+
 Two things were load-bearing to get the commit to complete:
 - **Persistent Mender state across the A/B swap:** vda4 is mounted *directly* at
   `/var/lib/mender` (see `mender-swupdate-data` + the fstab fragment) so the
