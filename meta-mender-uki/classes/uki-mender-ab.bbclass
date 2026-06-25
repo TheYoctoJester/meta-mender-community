@@ -124,36 +124,43 @@ do_uki_b[dirs] = "${B}"
 # on qemuarm64-uki, runs #2361/#2362). Repair it from the real artifact before
 # ukify runs, logging the deploy state so a genuine missing-initramfs (no real
 # file to relink) fails loudly here rather than cryptically inside ukify.
-do_uki[prefuncs] += "uki_repair_initramfs_link"
-do_uki_b[prefuncs] += "uki_repair_initramfs_link"
-python uki_repair_initramfs_link() {
-    import os, glob
+do_uki[prefuncs] += "uki_stage_initramfs"
+do_uki_b[prefuncs] += "uki_stage_initramfs"
+python uki_stage_initramfs() {
+    import os, glob, shutil
     deploy = d.getVar('DEPLOY_DIR_IMAGE')
+    tmpdir = d.getVar('TMPDIR')
     initimg = d.getVar('INITRAMFS_IMAGE')
     machine = d.getVar('MACHINE')
     fstype = d.getVar('INITRAMFS_FSTYPES').split()[0]
-    link = os.path.join(deploy, "%s-%s.%s" % (initimg, machine, fstype))
+    want = os.path.join(deploy, "%s-%s.%s" % (initimg, machine, fstype))
 
-    matches = sorted(glob.glob(os.path.join(deploy, "%s-%s*%s" % (initimg, machine, fstype))))
-    bb.plain("uki: initramfs expected at %s" % link)
-    for f in matches:
-        if os.path.islink(f):
-            state = "ok" if os.path.exists(f) else "DANGLING"
-            bb.plain("uki: deploy symlink %s -> %s [%s]" % (f, os.readlink(f), state))
-        else:
-            bb.plain("uki: deploy file    %s" % f)
-
-    if os.path.exists(link):
+    if os.path.exists(want):
+        bb.plain("uki: initramfs present at %s" % want)
         return
 
-    reals = [f for f in matches if os.path.isfile(f) and not os.path.islink(f)]
-    if not reals:
-        bb.fatal("uki: no initramfs artifact in %s to provide %s -- the "
-                 "initramfs image was not deployed" % (deploy, link))
-    reals.sort(key=os.path.getmtime)
-    src = os.path.basename(reals[-1])
-    if os.path.islink(link) or os.path.exists(link):
-        os.remove(link)
-    os.symlink(src, link)
-    bb.plain("uki: repaired initramfs link %s -> %s" % (link, src))
+    # The persistent CI build dir can carry a valid do_image_complete stamp for
+    # the initramfs while its deployed artifact is missing from DEPLOY_DIR_IMAGE
+    # (deploy reclaimed, or the sstate input->output copy not re-landing it), so
+    # do_uki cannot find it. The artifact does still exist in the initramfs
+    # image's work/staging dir (RM_WORK_EXCLUDE keeps it), so locate the real
+    # file there and stage it into DEPLOY_DIR_IMAGE under the link name do_uki
+    # expects. Fail loudly if it is genuinely nowhere.
+    pats = [
+        os.path.join(deploy, "%s-%s*.%s" % (initimg, machine, fstype)),
+        os.path.join(tmpdir, "work", "*", initimg, "*", "deploy-*",
+                     "%s-%s*.%s" % (initimg, machine, fstype)),
+    ]
+    found = []
+    for p in pats:
+        found += [f for f in glob.glob(p) if os.path.isfile(f) and not os.path.islink(f)]
+    bb.plain("uki: initramfs not in deploy; searched -> %s" % (found or "nothing"))
+    if not found:
+        bb.fatal("uki: no %s initramfs artifact for %s under %s -- the initramfs "
+                 "image produced no deployable file" % (fstype, machine, tmpdir))
+    found.sort(key=os.path.getmtime)
+    src = found[-1]
+    os.makedirs(deploy, exist_ok=True)
+    shutil.copy2(src, want)
+    bb.plain("uki: staged initramfs %s -> %s" % (src, want))
 }
