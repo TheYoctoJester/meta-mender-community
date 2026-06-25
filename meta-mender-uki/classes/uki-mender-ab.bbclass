@@ -114,3 +114,46 @@ python do_uki_b() {
 addtask do_uki_b after do_uki before do_deploy do_image_complete do_image_wic
 do_uki_b[depends] += "systemd-boot:do_deploy virtual/kernel:do_deploy"
 do_uki_b[dirs] = "${B}"
+
+# do_uki (oe-core) and do_uki_b read the initramfs from DEPLOY_DIR_IMAGE under
+# its link name (INITRAMFS_IMAGE-MACHINE.fstype) -- a symlink the initramfs
+# image deploy creates pointing at the timestamped .rootfs artifact. On a CI
+# rebuild where the initramfs image task is satisfied from cache (so it is not
+# re-deployed) in a persistent build dir, that link can be absent or left
+# dangling, and ukify then dies with FileNotFoundError on the initramfs (seen
+# on qemuarm64-uki, runs #2361/#2362). Repair it from the real artifact before
+# ukify runs, logging the deploy state so a genuine missing-initramfs (no real
+# file to relink) fails loudly here rather than cryptically inside ukify.
+do_uki[prefuncs] += "uki_repair_initramfs_link"
+do_uki_b[prefuncs] += "uki_repair_initramfs_link"
+python uki_repair_initramfs_link() {
+    import os, glob
+    deploy = d.getVar('DEPLOY_DIR_IMAGE')
+    initimg = d.getVar('INITRAMFS_IMAGE')
+    machine = d.getVar('MACHINE')
+    fstype = d.getVar('INITRAMFS_FSTYPES').split()[0]
+    link = os.path.join(deploy, "%s-%s.%s" % (initimg, machine, fstype))
+
+    matches = sorted(glob.glob(os.path.join(deploy, "%s-%s*%s" % (initimg, machine, fstype))))
+    bb.plain("uki: initramfs expected at %s" % link)
+    for f in matches:
+        if os.path.islink(f):
+            state = "ok" if os.path.exists(f) else "DANGLING"
+            bb.plain("uki: deploy symlink %s -> %s [%s]" % (f, os.readlink(f), state))
+        else:
+            bb.plain("uki: deploy file    %s" % f)
+
+    if os.path.exists(link):
+        return
+
+    reals = [f for f in matches if os.path.isfile(f) and not os.path.islink(f)]
+    if not reals:
+        bb.fatal("uki: no initramfs artifact in %s to provide %s -- the "
+                 "initramfs image was not deployed" % (deploy, link))
+    reals.sort(key=os.path.getmtime)
+    src = os.path.basename(reals[-1])
+    if os.path.islink(link) or os.path.exists(link):
+        os.remove(link)
+    os.symlink(src, link)
+    bb.plain("uki: repaired initramfs link %s -> %s" % (link, src))
+}
