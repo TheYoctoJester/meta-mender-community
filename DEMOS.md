@@ -29,8 +29,10 @@ share the common feature skeleton in `mender-community-images`'
 `yocto/wrynose/floating/include/mender-explicit-ab.yml` and add only their
 bootloader-specific delta. The efibootmgr and x86 U-Boot EFI demos additionally
 use the `/data`-persistence helper `mender-data-persist` (in
-`meta-mender-demos-common`). The Raspberry Pi tryboot demo predates that
-consolidation and carries its own configuration.
+`meta-mender-demos-common`). The two barebox demos share a single parameterised
+disk layout, `meta-mender-barebox/files/wic/mender-barebox.wks.in`, selected per
+board via `MENDER_BAREBOX_ONDISK` / `MENDER_BAREBOX_ALIGN`. The Raspberry Pi
+tryboot demo predates that consolidation and carries its own configuration.
 
 | Demo | Layer | Board (kas config) | Slot-selection mechanism | CI |
 |------|-------|--------------------|--------------------------|----|
