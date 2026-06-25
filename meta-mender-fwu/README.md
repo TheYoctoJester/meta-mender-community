@@ -210,10 +210,23 @@ journalctl -u mender-updated | grep accepted
 # "bank 1 state set to accepted (0xfc)"
 ```
 
-For the full end-to-end OTA against hosted.mender.io (upload artifact,
-accept device, deploy, observe bank flip, server reports Success), see
-the commit history on this branch or the per-build NOTE.txt in
-`mender-community-images`.
+The OTA artifact is built by `make-artifact.sh` at the layer root, which
+wraps the demo rootfs into an FMP capsule (`mkeficapsule`) and packs it
+into a `rootfs-image-fwu` Mender Artifact:
+
+```sh
+kas shell yocto/wrynose/floating/qemuarm64-fwu.yml -c '
+  meta-mender-community/meta-mender-fwu/make-artifact.sh \
+    build/tmp/deploy/images/qemuarm64-secureboot/core-image-fwu-test-qemuarm64-secureboot.rootfs.ext4 \
+    fwu-wrynose-v2 \
+    /tmp/fwu-wrynose-v2.mender'
+```
+
+Deploy `/tmp/fwu-wrynose-v2.mender` to the device on hosted.mender.io
+(upload artifact, accept device, deploy, observe bank flip, server
+reports Success). The `build-yocto-wrynose-demo.yml` workflow in
+`mender-integration-builds` drives exactly this round-trip in CI under
+`runqemu` (Capability C).
 
 ## License
 

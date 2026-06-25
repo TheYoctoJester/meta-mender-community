@@ -7,7 +7,8 @@
 #
 # Update payload contract: the Mender Artifact carries a single file
 # that is already a UEFI capsule (built with mkeficapsule, wrapping the
-# rootfs.ext4 against FWU_ROOTFS_IMAGE_TYPE_UUID). See ../make-artifact.sh.
+# rootfs.ext4 against FWU_ROOTFS_IMAGE_TYPE_UUID). See the layer-root
+# make-artifact.sh (meta-mender-fwu/make-artifact.sh) which builds it.
 #
 # Flow:
 #
