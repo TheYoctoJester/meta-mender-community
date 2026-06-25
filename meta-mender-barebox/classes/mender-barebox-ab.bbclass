@@ -23,6 +23,12 @@
 # (read_file reads the full cdev), so env size MUST equal the partition size.
 BAREBOX_MENDER_ENV_SIZE ?= "0x100000"
 
+# Per-board knobs for the shared files/wic/mender-barebox.wks.in template. Each
+# demo's kas config sets these explicitly; these defaults (qemuarm64 values) are
+# only a safety net so an empty expansion can never produce a malformed wks.
+MENDER_BAREBOX_ONDISK ??= "vda"
+MENDER_BAREBOX_ALIGN  ??= "1024"
+
 # Initial environment seeded into the env partition. Same variable names the
 # Mender rootfs-image module reads/writes; bootlimit drives the rollback in
 # /env/boot/mender. Slot A == partition 2.

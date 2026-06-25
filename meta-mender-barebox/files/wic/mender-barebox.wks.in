@@ -1,0 +1,38 @@
+# Mender + barebox A/B disk layout (wrynose), shared by the qemuarm64 and
+# raspberrypi4-64 barebox demos. The only per-board differences are the build
+# disk and partition alignment, supplied via:
+#   MENDER_BAREBOX_ONDISK  -- wic --ondisk name (qemuarm64: vda, RPi4: mmcblk0).
+#                             Build-time only; the runtime device is resolved by
+#                             GPT partlabel, so this name is irrelevant at boot.
+#   MENDER_BAREBOX_ALIGN   -- partition alignment in KiB (qemuarm64: 1024,
+#                             RPi4: 4096).
+# Both are set in each demo's kas config; mender-barebox-ab.bbclass provides
+# qemuarm64 defaults as a safety net.
+#
+# Boot chain at runtime:
+#   barebox (loaded per board: qemu -kernel, or RPi config.txt kernel=barebox.img)
+#   -> reads the U-Boot env (ubootvar) on mender-bootenv -> runs /env/boot/mender
+#   -> mounts the selected rootfs slot and boots its /boot/Image (+ DTB on RPi).
+#
+# GPT layout. Rootfs stays at partitions 2/3 so Mender's mender_boot_part=2/3
+# convention holds; the raw U-Boot env partition is last:
+#   1. mender-boot     64 MB FAT  boot/firmware partition (RPi: GPU firmware +
+#                                  config.txt + barebox.img; qemu: a barebox copy)
+#   2. mender-rootfsa 1024 MB     rootfs slot A (kernel [+ DTB] in its /boot)
+#   3. mender-rootfsb 1024 MB     rootfs slot B (build-time clone of A)
+#   4. mender-data     128 MB     persistent /data, bind-mounted over
+#                                  /var/lib/mender so Mender state survives the
+#                                  rootfs swap of an OTA.
+#   5. mender-bootenv    1 MB     raw, non-redundant U-Boot env (mkenvimage
+#                                  output) read by both barebox' ubootvar and
+#                                  libubootenv.
+#
+# Single-line `part` entries: wic's ksparser uses shlex which can choke on
+# backslash line continuations under recent Python.
+
+bootloader --ptable gpt --timeout=2
+part /boot/firmware --source bootimg-partition --ondisk ${MENDER_BAREBOX_ONDISK} --fstype=vfat --label boot --part-name=mender-boot --align ${MENDER_BAREBOX_ALIGN} --fixed-size 64M --active --no-fstab-update
+part / --source rootfs --ondisk ${MENDER_BAREBOX_ONDISK} --fstype=ext4 --label rootfsa --part-name=mender-rootfsa --align ${MENDER_BAREBOX_ALIGN} --fixed-size 1024M --use-uuid --exclude-path data/
+part --source rootfs --ondisk ${MENDER_BAREBOX_ONDISK} --fstype=ext4 --label rootfsb --part-name=mender-rootfsb --align ${MENDER_BAREBOX_ALIGN} --fixed-size 1024M --use-uuid --exclude-path data/
+part /data --source rootfs --change-directory=data --ondisk ${MENDER_BAREBOX_ONDISK} --fstype=ext4 --label data --part-name=mender-data --align ${MENDER_BAREBOX_ALIGN} --fixed-size 128M --use-uuid --no-fstab-update
+part --source rawcopy --sourceparams="file=mender-uboot-env.img" --ondisk ${MENDER_BAREBOX_ONDISK} --uuid=e6f1c2d3-4a5b-4c6d-8e7f-0a1b2c3d4e5f --part-name=mender-bootenv --align ${MENDER_BAREBOX_ALIGN} --fixed-size 1M --no-fstab-update
