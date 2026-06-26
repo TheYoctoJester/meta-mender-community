@@ -115,52 +115,75 @@ addtask do_uki_b after do_uki before do_deploy do_image_complete do_image_wic
 do_uki_b[depends] += "systemd-boot:do_deploy virtual/kernel:do_deploy"
 do_uki_b[dirs] = "${B}"
 
-# do_uki (oe-core) and do_uki_b read the initramfs from DEPLOY_DIR_IMAGE under
-# its link name (INITRAMFS_IMAGE-MACHINE.fstype) -- a symlink the initramfs
-# image deploy creates pointing at the timestamped .rootfs artifact. On a CI
-# rebuild where the initramfs image task is satisfied from cache (so it is not
-# re-deployed) in a persistent build dir, that link can be absent or left
-# dangling, and ukify then dies with FileNotFoundError on the initramfs (seen
-# on qemuarm64-uki, runs #2361/#2362). Repair it from the real artifact before
-# ukify runs, logging the deploy state so a genuine missing-initramfs (no real
-# file to relink) fails loudly here rather than cryptically inside ukify.
+# --- Build the initramfs in its own multiconfig -------------------------------
+#
+# uki.bbclass builds INITRAMFS_IMAGE in the *same* config as the UKI image and
+# expects its .cpio.gz in this image's DEPLOY_DIR_IMAGE. Two images sharing one
+# deploy dir is fragile: in the persistent CI build dir the initramfs artifact
+# went missing from the shared deploy dir while its do_image_complete stamp
+# stayed valid, so bitbake never redeployed it and do_uki died with "initramfs
+# image was not deployed" (qemuarm64-uki, runs #2361-#2365).
+#
+# Build the initramfs in a dedicated multiconfig instead -- the idiomatic Yocto
+# mechanism. It gets its own TMPDIR (hence its own deploy dir), so nothing else
+# can evict its artifact, and we pull it via mcdepends. The kas wrapper enables
+# it with:
+#
+#     BBMULTICONFIG              = "uki-initramfs"
+#     INITRAMFS_MULTICONFIG      = "uki-initramfs"
+#     INITRAMFS_DEPLOY_DIR_IMAGE = "${TOPDIR}/tmp-uki-initramfs/deploy/images/${MACHINE}"
+#
+# (the multiconfig is meta-mender-uki/conf/multiconfig/uki-initramfs.conf, which
+# only redirects TMPDIR; MACHINE/DISTRO/sstate/DL_DIR are inherited from
+# local.conf, so it yields the same initramfs as the stock same-config build.)
+# With INITRAMFS_MULTICONFIG unset this falls back to uki.bbclass's stock
+# same-config behaviour, so a plain local build is unaffected.
+
+INITRAMFS_DEPLOY_DIR_IMAGE ?= "${DEPLOY_DIR_IMAGE}"
+
+python () {
+    mc = d.getVar('INITRAMFS_MULTICONFIG')
+    initimg = d.getVar('INITRAMFS_IMAGE')
+    if not mc or not initimg:
+        return
+    # Drop the stock same-config initramfs dependency uki.bbclass adds, so the
+    # initramfs is not also built in this config, and pull it from the
+    # multiconfig instead (only do_uki / do_uki_b consume the artifact).
+    same = '%s:do_image_complete' % initimg
+    for task in ('do_uki', 'do_uki_b', 'do_image_complete'):
+        deps = d.getVarFlag(task, 'depends', True) or ''
+        if same in deps:
+            d.setVarFlag(task, 'depends', deps.replace(same, ' '))
+    mcdep = ' mc:%s:%s:%s:do_image_complete' % (d.getVar('BB_CURRENT_MC') or '', mc, initimg)
+    d.appendVarFlag('do_uki', 'mcdepends', mcdep)
+    d.appendVarFlag('do_uki_b', 'mcdepends', mcdep)
+}
+
+# uki.bbclass's do_uki and our do_uki_b read the initramfs from this image's
+# DEPLOY_DIR_IMAGE. When it is built in a separate multiconfig, copy the
+# artifact from the multiconfig's deploy dir into this one (under the link name
+# ukify expects) before either UKI task runs. A no-op for the stock same-config
+# build, where INITRAMFS_DEPLOY_DIR_IMAGE is this image's own deploy dir.
 do_uki[prefuncs] += "uki_stage_initramfs"
 do_uki_b[prefuncs] += "uki_stage_initramfs"
 python uki_stage_initramfs() {
-    import os, glob, shutil
+    import os, shutil
+    src_dir = d.getVar('INITRAMFS_DEPLOY_DIR_IMAGE')
     deploy = d.getVar('DEPLOY_DIR_IMAGE')
-    tmpdir = d.getVar('TMPDIR')
+    if os.path.realpath(src_dir) == os.path.realpath(deploy):
+        return
     initimg = d.getVar('INITRAMFS_IMAGE')
     machine = d.getVar('MACHINE')
     fstype = d.getVar('INITRAMFS_FSTYPES').split()[0]
-    want = os.path.join(deploy, "%s-%s.%s" % (initimg, machine, fstype))
-
-    if os.path.exists(want):
-        bb.plain("uki: initramfs present at %s" % want)
-        return
-
-    # The persistent CI build dir can carry a valid do_image_complete stamp for
-    # the initramfs while its deployed artifact is missing from DEPLOY_DIR_IMAGE
-    # (deploy reclaimed, or the sstate input->output copy not re-landing it), so
-    # do_uki cannot find it. The artifact does still exist in the initramfs
-    # image's work/staging dir (RM_WORK_EXCLUDE keeps it), so locate the real
-    # file there and stage it into DEPLOY_DIR_IMAGE under the link name do_uki
-    # expects. Fail loudly if it is genuinely nowhere.
-    pats = [
-        os.path.join(deploy, "%s-%s*.%s" % (initimg, machine, fstype)),
-        os.path.join(tmpdir, "work", "*", initimg, "*", "deploy-*",
-                     "%s-%s*.%s" % (initimg, machine, fstype)),
-    ]
-    found = []
-    for p in pats:
-        found += [f for f in glob.glob(p) if os.path.isfile(f) and not os.path.islink(f)]
-    bb.plain("uki: initramfs not in deploy; searched -> %s" % (found or "nothing"))
-    if not found:
-        bb.fatal("uki: no %s initramfs artifact for %s under %s -- the initramfs "
-                 "image produced no deployable file" % (fstype, machine, tmpdir))
-    found.sort(key=os.path.getmtime)
-    src = found[-1]
+    name = "%s-%s.%s" % (initimg, machine, fstype)
+    src = os.path.join(src_dir, name)
+    want = os.path.join(deploy, name)
+    if not os.path.exists(src):
+        bb.fatal("uki: initramfs %s not found in multiconfig deploy %s" % (name, src_dir))
+    real = os.path.realpath(src)
     os.makedirs(deploy, exist_ok=True)
-    shutil.copy2(src, want)
-    bb.plain("uki: staged initramfs %s -> %s" % (src, want))
+    if os.path.islink(want) or os.path.exists(want):
+        os.remove(want)
+    shutil.copy2(real, want)
+    bb.plain("uki: staged initramfs %s -> %s" % (real, want))
 }
