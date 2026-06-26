@@ -167,42 +167,22 @@ python () {
 do_uki[prefuncs] += "uki_stage_initramfs"
 do_uki_b[prefuncs] += "uki_stage_initramfs"
 python uki_stage_initramfs() {
-    import os, glob, shutil
-    deploy = d.getVar('DEPLOY_DIR_IMAGE')
+    import os, shutil
     src_dir = d.getVar('INITRAMFS_DEPLOY_DIR_IMAGE')
-    topdir = d.getVar('TOPDIR')
+    deploy = d.getVar('DEPLOY_DIR_IMAGE')
+    if os.path.realpath(src_dir) == os.path.realpath(deploy):
+        return  # stock same-config build: uki.bbclass finds it directly
     initimg = d.getVar('INITRAMFS_IMAGE')
     machine = d.getVar('MACHINE')
     fstype = d.getVar('INITRAMFS_FSTYPES').split()[0]
+    # MACHINE-based name (the initramfs bbappend restores this over meta-mender's
+    # MENDER_DEVICE_TYPE renaming), which is what uki.bbclass / do_uki_b expect.
     name = "%s-%s.%s" % (initimg, machine, fstype)
+    src = os.path.join(src_dir, name)
     want = os.path.join(deploy, name)
-    if os.path.exists(want):
-        return
-
-    # Diagnostics: where do we expect it, and what is actually in the candidate
-    # deploy dirs? (clean CI env is the only place we get reliable ground truth.)
-    bb.plain("uki: want %s" % want)
-    bb.plain("uki: INITRAMFS_DEPLOY_DIR_IMAGE=%s" % src_dir)
-    for label, dpath in (("mc-deploy", src_dir), ("main-deploy", deploy)):
-        if os.path.isdir(dpath):
-            ents = [e for e in os.listdir(dpath) if initimg in e]
-            bb.plain("uki: %s %s -> %s" % (label, dpath, ents or "(no initramfs entries)"))
-        else:
-            bb.plain("uki: %s %s -> MISSING DIR" % (label, dpath))
-
-    # Find the deployed initramfs image wherever it landed and stage it under the
-    # link name ukify expects. Search the mc/main deploy dirs and the whole mc
-    # deploy tree.
-    hits = []
-    for base in (src_dir, deploy, os.path.join(topdir, "tmp-uki-initramfs", "deploy")):
-        hits += glob.glob(os.path.join(base, "**", "%s-%s*.%s" % (initimg, machine, fstype)),
-                          recursive=True)
-    hits = [h for h in dict.fromkeys(hits) if os.path.isfile(h)]  # resolves valid symlinks
-    bb.plain("uki: initramfs image hits -> %s" % (hits or "none"))
-    if not hits:
-        bb.fatal("uki: no deployable %s found for %s (see listing above)" % (name, initimg))
-    hits.sort(key=os.path.getmtime)
-    real = os.path.realpath(hits[-1])
+    if not os.path.exists(src):
+        bb.fatal("uki: initramfs %s not found in multiconfig deploy %s" % (name, src_dir))
+    real = os.path.realpath(src)
     os.makedirs(deploy, exist_ok=True)
     if os.path.islink(want) or os.path.exists(want):
         os.remove(want)
