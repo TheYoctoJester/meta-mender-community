@@ -13,6 +13,7 @@ IMAGE_INSTALL:append = " \
     ostree \
     mender-auth \
     mender-update \
+    mender-update-module-ostree \
     u-boot-fw-utils \
     mender-ostree-data \
 "

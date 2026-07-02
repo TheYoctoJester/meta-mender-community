@@ -1,0 +1,116 @@
+#!/bin/sh
+# Mender Update Module: ostree
+#
+# Applies an OSTree update delivered inside a Mender artifact and lets OSTree do
+# the atomic deployment switch. Payload contract (see ../ostree-update-bundle):
+#   * ostree-delta-v2         -- a self-contained OSTree static delta (v1 -> v2)
+#   * ostree-delta-v2.commit  -- the target (v2) commit checksum
+#
+# Flow:
+#   ArtifactInstall  -- static-delta apply-offline (imports the v2 objects into
+#                       /ostree/repo; note: apply-offline does NOT move the
+#                       branch ref, so we deploy the target by checksum), then
+#                       ostree admin deploy <v2>. Mender then reboots
+#                       (NeedsArtifactReboot=Automatic); the U-Boot boot script
+#                       reads OSTree's uEnv.txt and boots the new deployment.
+#   ArtifactVerifyReboot -- assert we booted the v2 deployment.
+#   ArtifactCommit   -- ostree admin cleanup (prune the superseded deployment
+#                       state; OSTree keeps the previous deployment for rollback).
+#   ArtifactRollback -- ostree admin undeploy 0 (drop v2; next boot is the
+#                       previous, v1, deployment).
+#
+# Module API: https://docs.mender.io/artifact-creation/create-a-custom-update-module
+# Invocation: ostree <state> <file_dir>
+
+set -eu
+
+STATE="$1"
+FILES="$2"
+
+# Must match OSTREE_OSNAME / OSTREE_BRANCHNAME in the kas wrapper.
+OSNAME="mender-ostree"
+
+PREV_FILE="${FILES}/tmp/ostree-prev-commit"
+
+log() { echo "ostree update module: $*"; }
+die() { echo "ostree update module: ERROR: $*" >&2; exit 1; }
+
+# The booted deployment's commit checksum. `ostree admin status` marks the
+# booted deployment with a leading '*' and prints "<osname> <checksum>.<serial>".
+booted_commit() {
+    ostree admin status 2>/dev/null | sed -n 's/^\* [^ ]* \([0-9a-f]\{64\}\)\..*/\1/p' | head -n1
+}
+
+target_commit() {
+    cat "${FILES}"/files/*.commit 2>/dev/null | tr -d '[:space:]'
+}
+
+delta_file() {
+    # The delta is the payload file that is not the .commit sidecar.
+    ls "${FILES}"/files/* 2>/dev/null | grep -v '\.commit$' | head -n1
+}
+
+case "${STATE}" in
+    ProvidePayloadFileSizes)
+        echo "No"
+        ;;
+
+    NeedsArtifactReboot)
+        echo "Automatic"
+        ;;
+
+    SupportsRollback)
+        echo "Yes"
+        ;;
+
+    ArtifactInstall)
+        delta="$(delta_file)"
+        v2="$(target_commit)"
+        [ -n "${delta}" ] || die "no delta in ${FILES}/files"
+        [ -n "${v2}" ] || die "no target commit (.commit) in ${FILES}/files"
+        mkdir -p "${FILES}/tmp"
+        booted_commit > "${PREV_FILE}" || true
+        log "applying static delta $(basename "${delta}") -> deploy ${v2}"
+        ostree static-delta apply-offline "${delta}" || die "apply-offline failed"
+        ostree admin deploy --os="${OSNAME}" "${v2}" || die "admin deploy ${v2} failed"
+        log "deployed ${v2}; reboot will boot it"
+        ;;
+
+    ArtifactVerifyReboot)
+        v2="$(target_commit)"
+        now="$(booted_commit)"
+        [ -n "${now}" ] || die "cannot read booted deployment"
+        if [ "${now}" != "${v2}" ]; then
+            die "post-reboot commit mismatch: booted ${now}, expected ${v2}"
+        fi
+        log "running the new deployment ${now} as expected"
+        ;;
+
+    ArtifactCommit)
+        log "committing; pruning superseded deployment state"
+        ostree admin cleanup || true
+        ;;
+
+    ArtifactRollback)
+        # Drop the (failed) new deployment; next boot returns to the previous one.
+        log "rolling back: undeploying the new deployment"
+        ostree admin undeploy 0 || true
+        ;;
+
+    ArtifactVerifyRollbackReboot)
+        prev="$(cat "${PREV_FILE}" 2>/dev/null || true)"
+        now="$(booted_commit)"
+        if [ -n "${prev}" ] && [ "${now}" != "${prev}" ]; then
+            die "post-rollback commit mismatch: booted ${now}, expected ${prev}"
+        fi
+        log "rolled back to ${now}"
+        ;;
+
+    ArtifactReboot|ArtifactRollbackReboot|ArtifactFailure|Cleanup|Download)
+        :
+        ;;
+
+    *)
+        :
+        ;;
+esac
