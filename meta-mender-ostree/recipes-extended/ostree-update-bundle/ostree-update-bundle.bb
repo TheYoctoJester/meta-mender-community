@@ -39,8 +39,13 @@ do_deploy() {
     v2=$(ostree --repo=${WORKDIR}/repo commit -b ${OSTREE_BRANCHNAME} \
              -s "OSTree demo v2" --tree=dir=${WORKDIR}/co)
 
+    # --inline is essential: it embeds the delta parts INTO the superblock so
+    # the delta is a single self-contained file. Without it, --filename writes
+    # the superblock plus SEPARATE deltapart files; shipping only the superblock
+    # inside the Mender artifact makes apply-offline fail on device with
+    # "Opening deltapart '0': No such file or directory".
     ostree --repo=${WORKDIR}/repo static-delta generate \
-        --from=${v1} --to=${v2} --min-fallback-size=0 \
+        --from=${v1} --to=${v2} --min-fallback-size=0 --inline \
         --filename=${WORKDIR}/${OSTREE_DELTA_FILE}
 
     echo "${v2}" > ${WORKDIR}/${OSTREE_DELTA_FILE}.commit
