@@ -17,3 +17,8 @@ IMAGE_INSTALL:append = " \
 "
 
 IMAGE_FEATURES += "ssh-server-openssh"
+
+# Only the demo image builds the wic (OSTree sysroot via --source otaimage).
+# Setting this per-image, not on the machine, keeps meta-updater's
+# initramfs-ostree-image from also building a wic (which is a circular dep).
+IMAGE_FSTYPES:append = " wic wic.bmap"
