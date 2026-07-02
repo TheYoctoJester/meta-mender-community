@@ -1,0 +1,11 @@
+# OSTree-enabled disk image for qemuarm64 (Mender OSTree demo).
+#
+# Modeled on meta-updater's sdimage-sota.wks: a FAT /boot partition (U-Boot +
+# boot script) and the OSTree physical sysroot as the root partition, produced
+# by meta-updater's `otaimage` wic source (do_image_ota). qemuarm64 exposes the
+# disk as virtio (/dev/vda) at runtime; --ondisk is a build-time label only.
+
+part /boot --source bootimg-partition --ondisk vda --fstype=vfat --label boot --active --align 1024 --size 64
+part /     --source otaimage         --ondisk vda --fstype=ext4 --align 1024
+
+bootloader --ptable msdos --timeout 1
