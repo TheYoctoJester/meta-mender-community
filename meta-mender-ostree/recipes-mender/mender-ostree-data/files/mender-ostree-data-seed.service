@@ -1,0 +1,19 @@
+[Unit]
+Description=Seed /var/lib/mender from factory (OSTree persistent /var)
+# OSTree keeps /var across deployments but starts it empty of deployment
+# content, so /var/lib/mender (device_type, mender.conf, the agent key/state)
+# installed into the rootfs is not present at runtime. Copy the factory stash
+# (in /usr, carried read-only by the OSTree deployment) into the persistent
+# /var on first boot, before the Mender services start.
+DefaultDependencies=no
+After=local-fs.target
+Before=mender-authd.service mender-updated.service
+ConditionPathExists=!/var/lib/mender/device_type
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'mkdir -p /var/lib/mender && cp -a /usr/lib/mender-factory/. /var/lib/mender/'
+
+[Install]
+WantedBy=mender-authd.service mender-updated.service

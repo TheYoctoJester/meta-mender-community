@@ -14,9 +14,24 @@ IMAGE_INSTALL:append = " \
     mender-auth \
     mender-update \
     u-boot-fw-utils \
+    mender-ostree-data \
 "
 
 IMAGE_FEATURES += "ssh-server-openssh"
+
+# OSTree empties /var of deployment content, so /var/lib/mender (device_type,
+# mender.conf, agent key/state) installed by the client recipes would be missing
+# at runtime. Stash it into /usr/lib/mender-factory (in /usr, carried read-only
+# by the OSTree deployment) before do_image's OSTree-ification runs; the
+# mender-ostree-data seed service copies it back into the persistent /var on
+# first boot. Runs at end of do_rootfs, while /var/lib/mender still exists.
+mender_ostree_stash_factory() {
+    install -d ${IMAGE_ROOTFS}/usr/lib/mender-factory
+    if [ -d ${IMAGE_ROOTFS}${localstatedir}/lib/mender ]; then
+        cp -a ${IMAGE_ROOTFS}${localstatedir}/lib/mender/. ${IMAGE_ROOTFS}/usr/lib/mender-factory/
+    fi
+}
+ROOTFS_POSTPROCESS_COMMAND += "mender_ostree_stash_factory;"
 
 # Only the demo image builds the wic (OSTree sysroot via --source otaimage).
 # Setting this per-image, not on the machine, keeps meta-updater's
