@@ -64,7 +64,7 @@ deployments.
 |------|-------|--------------------|----------------------------|----|
 | RAUC | `meta-mender-rauc` | `qemuarm64-rauc`, `raspberrypi4-64-rauc` | a `rauc` Update Module installs a `.raucb` bundle carried in a Mender artifact; RAUC owns the slots | build + boot-smoke (qemu); build + hardware OTA (RPi4, dut1) |
 | SWUpdate | `meta-mender-swupdate` | `qemuarm64-swupdate` | a `swu` Update Module streams a `.swu` into the SWUpdate daemon over IPC (no disk staging) | build + OTA |
-| OSTree | `meta-mender-ostree` | `qemuarm64-ostree` | an `ostree` Update Module applies an OSTree static delta (`apply-offline`) then `ostree admin deploy`; OSTree owns the atomic deployment switch and rollback (no A/B partitions) | build + OTA |
+| OSTree | `meta-mender-ostree` | `qemuarm64-ostree` | an `ostree` Update Module applies an OSTree static delta (`apply-offline`) then `ostree admin deploy`; OSTree owns the atomic deployment switch and rollback (no A/B partitions) | build + OTA (verified run #2443) |
 
 ---
 
