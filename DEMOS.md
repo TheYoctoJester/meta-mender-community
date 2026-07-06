@@ -36,13 +36,13 @@ tryboot demo predates that consolidation and carries its own configuration.
 
 | Demo | Layer | Board (kas config) | Slot-selection mechanism | CI |
 |------|-------|--------------------|--------------------------|----|
-| UKI | `meta-mender-uki` | `qemuarm64-uki` | systemd-boot Boot Loader Spec + boot counting on Unified Kernel Images | build + OTA (verified run #2443) |
-| systemd-boot | `meta-mender-systemd-boot` | `qemux86-64-systemd-boot` | stock systemd-boot Type #1 BLS entries + automatic boot assessment | build + qemu A/B test (run #2443) |
-| efibootmgr | `meta-mender-efibootmgr` | `qemux86-64-efibootmgr` | UEFI boot manager `BootNext`/`BootOrder` (custom Update Module) | build + qemu A/B test (run #2443) |
-| x86 U-Boot EFI | `meta-mender-x86-uboot-efi` (+ `meta-mender-explicit-wic`) | `qemux86-64-uboot-efi` | U-Boot run as an EFI application under OVMF (GPLv3-free chain) | build + qemu A/B test (run #2443) |
-| FWU | `meta-mender-fwu` | `qemuarm64-fwu` | U-Boot FWU multi-bank metadata + EFI capsule-on-disk | build + OTA (verified run #2443) |
-| barebox | `meta-mender-barebox` | `qemuarm64-barebox`, `raspberrypi4-64-barebox` | barebox reads the U-Boot-format env (rootfs-image module drives it, no shim) | build only — runtime unverified (WIP) |
-| Raspberry Pi tryboot | `meta-mender-raspberrypi-tryboot` | `raspberrypi4-64-tryboot`, `raspberrypi5-tryboot` (+ `-validation`) | Raspberry Pi firmware `tryboot` / `autoboot.txt` | build + hardware (run #2443) |
+| UKI | `meta-mender-uki` | `qemuarm64-uki` | systemd-boot Boot Loader Spec + boot counting on Unified Kernel Images | build + OTA (verified run #2450) |
+| systemd-boot | `meta-mender-systemd-boot` | `qemux86-64-systemd-boot` | stock systemd-boot Type #1 BLS entries + automatic boot assessment | build + qemu A/B test (run #2450) |
+| efibootmgr | `meta-mender-efibootmgr` | `qemux86-64-efibootmgr` | UEFI boot manager `BootNext`/`BootOrder` (custom Update Module) | build + qemu A/B test (run #2450) |
+| x86 U-Boot EFI | `meta-mender-x86-uboot-efi` (+ `meta-mender-explicit-wic`) | `qemux86-64-uboot-efi` | U-Boot run as an EFI application under OVMF (GPLv3-free chain) | build + qemu A/B test (run #2450) |
+| FWU | `meta-mender-fwu` | `qemuarm64-fwu` | U-Boot FWU multi-bank metadata + EFI capsule-on-disk | build + OTA (verified run #2450) |
+| barebox | `meta-mender-barebox` | `qemuarm64-barebox`, `raspberrypi4-64-barebox` | barebox reads the U-Boot-format env (rootfs-image module drives it, no shim) | build (run #2450); qemuarm64 runtime + rollback verified locally (README); RPi4 WIP. In-job CI boot-smoke is a follow-up (barebox uses direct `qemu -M virt`, not runqemu) |
+| Raspberry Pi tryboot | `meta-mender-raspberrypi-tryboot` | `raspberrypi4-64-tryboot`, `raspberrypi5-tryboot` (+ `-validation`) | Raspberry Pi firmware `tryboot` / `autoboot.txt` | build + hardware (run #2450) |
 
 `meta-mender-explicit-wic` is the original explicit-WIC base demo (mender-uboot +
 explicit `.wks` + a minimal `.mender` artifact writer). It has no standalone kas
@@ -62,9 +62,9 @@ deployments.
 
 | Demo | Layer | Board (kas config) | How the payload is applied | CI |
 |------|-------|--------------------|----------------------------|----|
-| RAUC | `meta-mender-rauc` | `qemuarm64-rauc`, `raspberrypi4-64-rauc` | a `rauc` Update Module installs a `.raucb` bundle carried in a Mender artifact; RAUC owns the slots | build + boot-smoke (qemu); build + hardware OTA (RPi4, dut1) — verified run #2443 |
-| SWUpdate | `meta-mender-swupdate` | `qemuarm64-swupdate` | a `swu` Update Module streams a `.swu` into the SWUpdate daemon over IPC (no disk staging) | build + OTA (verified run #2443) |
-| OSTree | `meta-mender-ostree` | `qemuarm64-ostree` | an `ostree` Update Module applies an OSTree static delta (`apply-offline`) then `ostree admin deploy`; OSTree owns the atomic deployment switch and rollback (no A/B partitions) | build + OTA (verified run #2443) |
+| RAUC | `meta-mender-rauc` | `qemuarm64-rauc`, `raspberrypi4-64-rauc` | a `rauc` Update Module installs a `.raucb` bundle carried in a Mender artifact; RAUC owns the slots | build + OTA (qemu, run #2450); build + hardware OTA (RPi4, dut1, run #2443) |
+| SWUpdate | `meta-mender-swupdate` | `qemuarm64-swupdate` | a `swu` Update Module streams a `.swu` into the SWUpdate daemon over IPC (no disk staging) | build + OTA (verified run #2450) |
+| OSTree | `meta-mender-ostree` | `qemuarm64-ostree` | an `ostree` Update Module applies an OSTree static delta (`apply-offline`) then `ostree admin deploy`; OSTree owns the atomic deployment switch and rollback (no A/B partitions) | build + OTA (verified run #2450) |
 
 ---
 
