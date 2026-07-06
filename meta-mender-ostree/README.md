@@ -1,6 +1,8 @@
 # meta-mender-ostree
 
-**Status: work in progress (bring-up).** Mender OTA on top of an
+**Status: verified end-to-end** (full OTA round-trip on hosted.mender.io, CI run
+#2443: apply-offline → `admin deploy` → reboot into v2 → commit, server reports
+success). Mender OTA on top of an
 [OSTree](https://ostreedev.github.io/ostree/)-managed root filesystem, on Yocto
 wrynose, qemuarm64 + U-Boot. This is a "Family B" demo: OSTree is the on-device
 atomic-update engine, the Mender client runs in **client-only** mode
@@ -30,29 +32,49 @@ management plane here is Mender, not Uptane. meta-updater ships no
 * `files/wic/qemuarm64-ostree.wks` — FAT `/boot` + the OSTree physical sysroot
   (`--source otaimage`) as root.
 * `recipes-core/images/mender-ostree-image.bb` — the demo rootfs (OSTree +
-  Mender client-only).
-* `recipes-core/images/all-images.bb` — build handle (image, plus the v2 delta
-  once added).
-* _(planned)_ `recipes-mender/mender-update-module-ostree/` — the `ostree`
-  Update Module (`static-delta apply-offline` → `admin deploy` → reboot →
-  verify → commit → rollback).
-* _(planned)_ build-time **v2 static-delta** payload (commit a changed v2, then
-  `ostree static-delta generate --min-fallback-size=0`).
-* _(planned)_ first-boot seed of `device_type` into the persistent
-  `/var/lib/mender` if OSTree's `/var` population doesn't carry it.
+  Mender client-only). Sets `IMAGE_ROOTFS_EXTRA_SPACE` so the deployed ext4 has
+  headroom for the second deployment + the delta apply (otherwise OSTree's
+  `min-free-space-percent` guard rejects `apply-offline`), and stashes the
+  factory `/var/lib/mender` into `/usr/lib/mender-factory` for first-boot seed.
+* `recipes-core/images/all-images.bb` — build handle (image + the v2 delta).
+* `recipes-extended/mender-update-module-ostree/` — the `ostree` Update Module
+  (`static-delta apply-offline` → `admin deploy` → reboot → verify → commit →
+  rollback).
+* `recipes-extended/ostree-update-bundle/` — build-time **v2 static-delta**
+  payload: commit a changed v2, then
+  `ostree static-delta generate --min-fallback-size=0 --inline` (`--inline` is
+  essential — it embeds the delta parts into a single self-contained file, so
+  the Mender artifact ships everything `apply-offline` needs).
+* `recipes-mender/mender-ostree-data/` — first-boot seed of the factory
+  `/var/lib/mender` (device_type etc.) into the persistent `/var`, which OSTree
+  starts empty.
 
 ## Consumed by
 
 The kas wrapper `yocto/wrynose/floating/qemuarm64-ostree.yml` on branch
-`wrynose-demos` of `theyoctojester/mender-community-images`, and (once green)
-the `build-yocto-wrynose-demo.yml` CI (Capability C, `ota_kind = ostree`).
+`wrynose-demos` of `theyoctojester/mender-community-images`, and the
+`build-yocto-wrynose-demo.yml` CI (Capability C, `ota_kind = ostree`).
 
-## Bring-up gates (see the plan)
+## Runtime quirks discovered during bring-up
 
-1. OSTree image builds on the wrynose + meta-updater + meta-arm/mender stack
-   (aktualizr stripped; `sota_sanity` GARAGE defaults).
-2. U-Boot boots an OSTree deployment on qemuarm64 under runqemu (no
-   `sota_qemuarm64` / `u-boot-otascript` upstream — authored here).
-3. `device_type` seeding in the OSTree `/var` model.
-4. v2 commit + static-delta correctness.
-5. Full OTA timing under TCG.
+1. **U-Boot OSTree boot on qemuarm64.** meta-updater ships no `sota_qemuarm64`
+   nor a U-Boot OTA boot script; the machine glue + `boot.cmd` are authored here.
+   The rootfs must be selected with `root=` (the initramfs-framework `rootfs`
+   module mounts it, then the `ostree` module runs `ostree-prepare-root`), not
+   meta-updater's `ostree_root=`.
+2. **`/var` starts empty.** OSTree wipes `/var` of deployment content, so
+   `/var/lib/mender/device_type` installed by the client recipes is gone at
+   runtime. `mender-ostree-data` stashes it to `/usr/lib/mender-factory` at build
+   and a first-boot service seeds it into the persistent `/var`.
+3. **Self-contained static delta.** `static-delta generate` without `--inline`
+   writes the superblock plus *separate* deltapart files; shipping only the
+   superblock makes on-device `apply-offline` fail with "Opening deltapart '0':
+   No such file or directory". `--inline` produces one self-contained file.
+4. **Rootfs free space.** The `otaimage` ext4 ships nearly full; the second
+   (v2) deployment + `/var` writes leave it at the 3% mark, so `apply-offline`
+   trips OSTree's `min-free-space-percent` guard. `IMAGE_ROOTFS_EXTRA_SPACE`
+   gives the needed headroom.
+5. **(CI, not this layer) distinct QEMU slirp MAC per demo.** All slirp demos
+   otherwise share `52:54:00:12:35:02` and collide on one Mender device identity
+   when they run concurrently — see the per-demo `QB_NETWORK_DEVICE:forcevariable`
+   in the kas wrappers.

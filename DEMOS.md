@@ -52,16 +52,19 @@ config; the x86 U-Boot EFI demo builds on it.
 
 ## Family B — an external updater owns the rootfs
 
-A third-party updater owns the A/B rootfs; the Mender client runs in **client-
+A third-party updater owns the rootfs; the Mender client runs in **client-
 only** mode (`meta-mender-client-only`) and a custom Update Module hands the
 payload to that updater. `mender-full` is off. The
 `version-inventory-script` do_package QA workaround for wrynose lives once in
-`meta-mender-client-only`'s `mender_%.bbappend`.
+`meta-mender-client-only`'s `mender_%.bbappend`. Most of these use an A/B
+rootfs; OSTree instead keeps a single rootfs and switches between OSTree
+deployments.
 
 | Demo | Layer | Board (kas config) | How the payload is applied | CI |
 |------|-------|--------------------|----------------------------|----|
 | RAUC | `meta-mender-rauc` | `qemuarm64-rauc`, `raspberrypi4-64-rauc` | a `rauc` Update Module installs a `.raucb` bundle carried in a Mender artifact; RAUC owns the slots | build + boot-smoke (qemu); build + hardware OTA (RPi4, dut1) |
 | SWUpdate | `meta-mender-swupdate` | `qemuarm64-swupdate` | a `swu` Update Module streams a `.swu` into the SWUpdate daemon over IPC (no disk staging) | build + OTA |
+| OSTree | `meta-mender-ostree` | `qemuarm64-ostree` | an `ostree` Update Module applies an OSTree static delta (`apply-offline`) then `ostree admin deploy`; OSTree owns the atomic deployment switch and rollback (no A/B partitions) | build + OTA |
 
 ---
 
