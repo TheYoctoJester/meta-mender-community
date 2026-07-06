@@ -1,5 +1,7 @@
 # meta-mender-swupdate
 
+**Status: verified end-to-end** (Mender OTA on hosted.mender.io, run #2450).
+
 Manage a [SWUpdate](https://sbabic.github.io/swupdate/)-updated A/B system from
 the Mender server, on `qemuarm64` (wrynose). SWUpdate stays the on-device
 installer; the Mender client runs in client-only mode and a custom **`swu`

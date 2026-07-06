@@ -1,6 +1,8 @@
 meta-mender-x86-uboot-efi
 =========================
 
+**Status: verified** (qemu A/B boot test under OVMF, run #2450).
+
 Demo layer for running U-Boot as an EFI application on x86-64 with Mender A/B
 update support. This replaces GRUB with U-Boot for a GPLv3-free boot chain.
 

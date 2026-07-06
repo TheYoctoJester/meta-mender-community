@@ -1,5 +1,7 @@
 # meta-mender-fwu
 
+**Status: verified end-to-end** (Mender OTA on hosted.mender.io, run #2450).
+
 Mender OTA on top of [U-Boot's FWU Multi Bank
 Update](https://docs.u-boot.org/en/latest/develop/uefi/fwu_updates.html)
 on Yocto wrynose. End-to-end verified against hosted.mender.io on

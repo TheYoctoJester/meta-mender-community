@@ -1,5 +1,7 @@
 This README file contains information on the contents of the meta-mender-explicit-wic layer.
 
+**Status: support layer** (base for the x86 U-Boot EFI demo; no standalone demo).
+
 Please see the corresponding sections below for details.
 
 Dependencies

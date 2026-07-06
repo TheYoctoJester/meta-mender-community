@@ -1,5 +1,7 @@
 # meta-mender-systemd-boot
 
+**Status: verified** (qemu A/B boot test under OVMF, run #2450).
+
 Mender A/B updates for systems that boot via **stock, unpatched systemd-boot**,
 using systemd's native [Automatic Boot
 Assessment](https://www.freedesktop.org/software/systemd/man/latest/systemd-bless-boot.service.html)

@@ -1,5 +1,7 @@
 # meta-mender-rauc
 
+**Status: verified end-to-end** (qemu OTA run #2450; RPi4 hardware OTA on dut1 run #2443).
+
 Manage a [RAUC](https://rauc.io)-updated A/B system from the Mender server on
 Yocto wrynose. RAUC stays the on-device updater; the Mender server delivers the
 RAUC bundle inside a Mender artifact and a custom Update Module installs it.

@@ -1,5 +1,7 @@
 This README file contains information on the contents of the meta-mender-raspberrypi-tryboot layer.
 
+**Status: verified** (RPi hardware A/B validate on dut1/dut2, run #2450).
+
 Please see the corresponding sections below for details.
 
 Dependencies

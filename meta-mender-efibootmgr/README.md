@@ -1,6 +1,8 @@
 meta-mender-efibootmgr
 ======================
 
+**Status: verified** (qemu A/B boot test under OVMF, run #2450).
+
 Demo layer for Mender A/B updates on x86-64 where the UEFI boot manager itself
 is the slot selector. The firmware launches an EFI-stub kernel directly -- no
 GRUB, no U-Boot, no systemd-boot -- and a custom Mender Update Module switches

@@ -1,5 +1,7 @@
 This README file contains information on the contents of the meta-mender-client-only layer.
 
+**Status: support layer** (shared client-only glue; no standalone demo).
+
 Please see the corresponding sections below for details.
 
 Dependencies

@@ -1,5 +1,7 @@
 # meta-mender-uki
 
+**Status: verified end-to-end** (Mender OTA on hosted.mender.io, run #2450).
+
 Mender A/B updates for systems that boot via systemd-boot from a [Unified
 Kernel Image](https://uapi-group.org/specifications/specs/unified_kernel_image/)
 (UKI) on Yocto wrynose. End-to-end verified against hosted.mender.io on

@@ -1,5 +1,7 @@
 # meta-mender-demos-common
 
+**Status: support layer** (shared building blocks; no standalone demo).
+
 Shared building blocks for the wrynose Mender demo layers, factored out so the
 individual demos do not each carry a copy.
 
