@@ -23,9 +23,12 @@ RDEPENDS:${PN} = " \
     swupdate \
     "
 
+# v3 update modules live here for mender-update 5.x (same across the demos).
+MENDER_MODULES_DIR = "${datadir}/mender/modules/v3"
+
 do_install() {
-    install -d ${D}/usr/share/mender/modules/v3
-    install -m 0755 ${UNPACKDIR}/swu ${D}/usr/share/mender/modules/v3/swu
+    install -d "${D}${MENDER_MODULES_DIR}"
+    install -m 0755 ${UNPACKDIR}/swu "${D}${MENDER_MODULES_DIR}/swu"
 }
 
-FILES:${PN} = "/usr/share/mender/modules/v3/swu"
+FILES:${PN} = "${MENDER_MODULES_DIR}/swu"

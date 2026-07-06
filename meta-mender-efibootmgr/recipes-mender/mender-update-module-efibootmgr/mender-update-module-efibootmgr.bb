@@ -28,10 +28,13 @@ RDEPENDS:${PN} = " \
     coreutils \
 "
 
+# v3 update modules live here for mender-update 5.x (same across the demos).
+MENDER_MODULES_DIR = "${datadir}/mender/modules/v3"
+
 do_install() {
-    install -d ${D}/usr/share/mender/modules/v3
+    install -d "${D}${MENDER_MODULES_DIR}"
     install -m 0755 ${UNPACKDIR}/efibootmgr-rootfs \
-        ${D}/usr/share/mender/modules/v3/efibootmgr-rootfs
+        "${D}${MENDER_MODULES_DIR}/efibootmgr-rootfs"
 
     install -d ${D}${bindir}
     install -m 0755 ${UNPACKDIR}/mender-efibootmgr-bootentry.sh \
@@ -43,7 +46,7 @@ do_install() {
 }
 
 FILES:${PN} = " \
-    /usr/share/mender/modules/v3/efibootmgr-rootfs \
+    ${MENDER_MODULES_DIR}/efibootmgr-rootfs \
     ${bindir}/mender-efibootmgr-bootentry.sh \
     ${systemd_system_unitdir}/mender-efibootmgr-bootentry.service \
 "

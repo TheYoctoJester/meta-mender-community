@@ -40,9 +40,12 @@ RDEPENDS:${PN} = " \
 #
 # This recipe therefore only ships the update module itself.
 
+# v3 update modules live here for mender-update 5.x (same across the demos).
+MENDER_MODULES_DIR = "${datadir}/mender/modules/v3"
+
 do_install() {
-    install -d ${D}/usr/share/mender/modules/v3
-    install -m 0755 ${UNPACKDIR}/rootfs-image-fwu ${D}/usr/share/mender/modules/v3/rootfs-image-fwu
+    install -d "${D}${MENDER_MODULES_DIR}"
+    install -m 0755 ${UNPACKDIR}/rootfs-image-fwu "${D}${MENDER_MODULES_DIR}/rootfs-image-fwu"
 }
 
-FILES:${PN} = "/usr/share/mender/modules/v3/rootfs-image-fwu"
+FILES:${PN} = "${MENDER_MODULES_DIR}/rootfs-image-fwu"
