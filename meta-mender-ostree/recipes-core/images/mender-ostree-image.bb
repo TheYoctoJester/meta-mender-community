@@ -38,3 +38,13 @@ ROOTFS_POSTPROCESS_COMMAND += "mender_ostree_stash_factory;"
 # Setting this per-image, not on the machine, keeps meta-updater's
 # initramfs-ostree-image from also building a wic (which is a circular dep).
 IMAGE_FSTYPES:append = " wic wic.bmap"
+
+# Free space for the OTA. The ota-ext4 (meta-updater's otaimage, sized by
+# oe_mkext234fs from ROOTFS_SIZE over OTA_SYSROOT) otherwise ships with only
+# ~50 MB free; at runtime the /var writes + the second (v2) OSTree deployment
+# leave it at the 3% mark, and applying the static delta then trips OSTree's
+# min-free-space-percent guard ("would be exceeded, at least N kB requested" ->
+# apply-offline fails). 512 MB of headroom comfortably fits both deployments,
+# /var and the delta apply. IMAGE_ROOTFS_EXTRA_SPACE feeds ROOTFS_SIZE, so the
+# ext4 (and the wic root partition, sized to it) grow accordingly.
+IMAGE_ROOTFS_EXTRA_SPACE = "524288"
