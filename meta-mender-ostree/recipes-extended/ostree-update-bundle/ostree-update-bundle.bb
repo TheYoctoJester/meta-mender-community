@@ -23,6 +23,17 @@ inherit deploy
 # Needs the image's OSTree commit (v1) in the repo.
 do_deploy[depends] += "mender-ostree-image:do_image_complete"
 
+# Always regenerate the delta against the CURRENT image commit. The image's
+# OSTree commit hash is not reproducible (it carries the build timestamp), so a
+# task dependency alone is not enough: if the image rebuilds (new commit) while
+# this task is restored from sstate, the cached delta's source commit no longer
+# exists in the deployed repo and on-device apply-offline fails with
+# "Commit <v1>, which is the delta source, is not in repository" (seen in run
+# #2449). nostamp forces do_deploy to run every build, reading whatever commit
+# the image just produced, so the delta source always matches the deployed
+# rootfs. Delta generation is cheap (seconds).
+do_deploy[nostamp] = "1"
+
 do_deploy() {
     # Work on a copy so we never mutate the image's deploy repo.
     rm -rf ${WORKDIR}/repo ${WORKDIR}/co
