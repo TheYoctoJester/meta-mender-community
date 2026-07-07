@@ -41,7 +41,7 @@ tryboot demo predates that consolidation and carries its own configuration.
 | efibootmgr | `meta-mender-efibootmgr` | `qemux86-64-efibootmgr` | UEFI boot manager `BootNext`/`BootOrder` (custom Update Module) | build + qemu A/B test (run #2450) |
 | x86 U-Boot EFI | `meta-mender-x86-uboot-efi` (+ `meta-mender-explicit-wic`) | `qemux86-64-uboot-efi` | U-Boot run as an EFI application under OVMF (GPLv3-free chain) | build + qemu A/B test (run #2450) |
 | FWU | `meta-mender-fwu` | `qemuarm64-fwu` | U-Boot FWU multi-bank metadata + EFI capsule-on-disk | build + OTA (verified run #2450) |
-| barebox | `meta-mender-barebox` | `qemuarm64-barebox`, `raspberrypi4-64-barebox` | barebox reads the U-Boot-format env (rootfs-image module drives it, no shim) | build (run #2450); qemuarm64 runtime + rollback verified locally (README); RPi4 WIP. In-job CI boot-smoke is a follow-up (barebox uses direct `qemu -M virt`, not runqemu) |
+| barebox | `meta-mender-barebox` | `qemuarm64-barebox`, `raspberrypi4-64-barebox` | barebox reads the U-Boot-format env (rootfs-image module drives it, no shim) | build + boot-smoke (qemuarm64, run #2458); RPi4 build only (downstream kernel WIP) |
 | Raspberry Pi tryboot | `meta-mender-raspberrypi-tryboot` | `raspberrypi4-64-tryboot`, `raspberrypi5-tryboot` (+ `-validation`) | Raspberry Pi firmware `tryboot` / `autoboot.txt` | build + hardware (run #2450) |
 
 `meta-mender-explicit-wic` is the original explicit-WIC base demo (mender-uboot +

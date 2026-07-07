@@ -88,6 +88,11 @@ selected slot to a Poky login.
 
 ## Status
 
+CI runs a **qemuarm64 boot-smoke** in the wrynose demo workflow (run #2458):
+barebox is launched directly under `qemu -M virt` (via `oe-run-native
+qemu-system-native`, since it does not use runqemu) and boots to a Poky login.
+The **RPi4** board stays build-only in CI (downstream-kernel bring-up is WIP).
+
 Verified on **qemuarm64** (barebox 2026.04.0 from oe-core): clean boot of the
 committed slot, and **rollback** — arming a trial on slot B with a broken rootfs
 and power-cycling shows barebox count the boot attempts and, once `bootcount >
