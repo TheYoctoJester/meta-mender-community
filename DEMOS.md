@@ -68,6 +68,24 @@ deployments.
 
 ---
 
+## Beyond Yocto — Debian A/B via debos
+
+Not every Mender A/B demo is built with Yocto. `mender-community-images` also
+carries a **debos**-built demo (Debian **trixie**, `qemuarm64`) under
+`debos/floating/qemuarm64/`. It has no layer in this repository — debos builds
+the Debian rootfs directly rather than through `meta-mender`.
+
+It boots via UEFI (AAVMF/OVMF) + GRUB using **grub-mender-grubenv** and Mender's
+stock `rootfs-image` update module (Family-A style: the bootloader owns slot
+selection), with the Mender client (`mender-client4`) installed from the Mender
+APT repository. Details in `mender-community-images/debos/README.md`.
+
+CI: build + OTA (qemu, verified run #2469) via `build-debos-demo.yml` in
+**mender-integration-builds**. The runners have no `/dev/kvm`, so debos builds in
+its software fakemachine backend (`debos -b qemu`).
+
+---
+
 ## Shared / support layers
 
 - **`meta-mender-demos-common`** — building blocks shared by several demos.
