@@ -68,15 +68,18 @@ deployments.
 
 ---
 
-## Beyond Yocto — Debian A/B (debos, ELBE, ISAR)
+## Beyond Yocto — Debian A/B (debos, ELBE, ISAR, pi-gen)
 
 Not every Mender A/B demo is built with Yocto. `mender-community-images` carries
-three Debian **trixie** / `qemuarm64` demos, one per build system:
+four Debian **trixie** demos, one per build system — three on `qemuarm64`, one on
+real Raspberry Pi hardware:
 
 - **debos** (`debos/floating/qemuarm64/`) — builds the rootfs directly, no layer.
 - **ELBE** (`elbe/floating/qemuarm64/`) — Linutronix ELBE, initvm-based.
 - **ISAR** (`isar/floating/qemuarm64/`) — BitBake/kas via the `meta-mender-isar`
   layer (the only Debian demo that goes through BitBake).
+- **pi-gen** (`pi-gen/floating/raspberrypi/`) — the official Raspberry Pi OS
+  builder; the only demo verified on physical hardware (Pi4 + Pi5 lab DUTs).
 
 **debos and ELBE** boot via UEFI (AAVMF) + GRUB using **grub-mender-grubenv** and
 Mender's stock `rootfs-image` update module (Family-A style: the bootloader owns
@@ -84,16 +87,24 @@ slot selection). **ISAR** takes a different route: it reuses the **efibootmgr**
 integration (`meta-mender-efibootmgr` in this repo) — the firmware launches an
 EFI-stub kernel directly (a UKI on first boot; per-slot entries thereafter) and a
 custom `efibootmgr-rootfs` **module-image** update module flips slots via the UEFI
-boot variables (`BootNext`/`BootOrder`), no bootloader on the disk. All three
-install `mender-client4` from the Mender APT repository. See each demo's
-`README.md` under `mender-community-images/{debos,elbe,isar}/`.
+boot variables (`BootNext`/`BootOrder`), no bootloader on the disk. **pi-gen**
+targets Raspberry Pi OS (arm64) on real Pi4/Pi5: one image boots both boards, and
+A/B is the Pi-native **tryboot** mechanism (`autoboot.txt` + `tryboot_a_b`) driven
+by a custom `rpi-tryboot-rootfs` **module-image** update module that streams the
+payload straight onto the inactive rootfs slot and repopulates the inactive boot
+FAT from the new rootfs's `/boot/firmware`. All four install `mender-client4` from
+the Mender APT repository. See each demo's `README.md` under
+`mender-community-images/{debos,elbe,isar,pi-gen}/`.
 
-CI: build + qemu OTA for all three via the single matrix workflow
+CI: build + qemu OTA for the three qemu demos via the single matrix workflow
 **`build-debian-demos.yml`** in **mender-integration-builds** (verified run #2493,
 `success=1` per tool). The runners now expose `/dev/kvm`, so the debos fakemachine
 (`-b kvm`) and the ELBE initvm run KVM-accelerated; ISAR assembles its arm64 rootfs
 under `qemu-user-static` (TCG — no KVM needed). The arm64 OTA-boot guest always
-runs under TCG.
+runs under TCG. The pi-gen demo has its own workflow, **`build-pi-gen-demo.yml`**,
+which builds the image (pi-gen under `qemu-user`/binfmt) and then runs a full
+Mender OTA on the physical Pi4 and Pi5 DUTs (verified run #2551, `success=1` on
+both boards).
 
 ---
 
