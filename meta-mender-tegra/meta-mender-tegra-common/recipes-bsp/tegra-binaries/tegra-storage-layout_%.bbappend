@@ -39,3 +39,40 @@ PARTITION_FILE_EXTERNAL:p3768-0000-p3767-0000 = "${UNPACKDIR}/flash_l4t_t234_nvm
 # Fixing that needs a custom t264 layout with a trailing data partition, the way
 # the t234 one above does it.
 PARTITION_LAYOUT_EXTERNAL:tegra264 = "flash_l4t_t264_nvme_rootfs_ab.xml"
+
+# Apply the layout-independent half of the filename map to the layouts this
+# recipe composes, which is the only place a layout supplied by this layer can be
+# reached.
+#
+# tegra-storage-layout-base's rewrite only touches the layouts it stages itself.
+# For the machines above, PARTITION_FILE_EXTERNAL points at our own XML instead,
+# so it never passes through that rewrite: without this, an entry meant for every
+# layout, such as the recovery boot image, would silently be dropped on exactly
+# the machines that use a custom layout. It is dropped rather than ignored,
+# because our XML carries NVIDIA's RECFILE placeholder and
+# image_types_tegra.bbclass deletes every line that still has it.
+#
+# A no-op when nothing has contributed to the map, and idempotent otherwise: for
+# a machine using a staged layout the entry is already there with the same value.
+require tegra-mender-layout.inc
+
+DEPENDS:append = " tegra-helper-scripts-native"
+
+mender_flash_layout_extra() {
+    local file=$1
+    [ -e "$file" ] || return 0
+    mv $file $file.mender-orig
+    nvflashxmlparse -v --rewrite-contents-from=${WORKDIR}/mender-extra.xml \
+		--output=$file $file.mender-orig
+}
+
+do_compile:append() {
+    if [ -z "${TEGRA_MENDER_LAYOUT_FILENAMES_EXTRA}" ]; then
+        return 0
+    fi
+    mender_flash_layout_write_map ${WORKDIR}/mender-extra.xml \
+        ${TEGRA_MENDER_LAYOUT_FILENAMES_EXTRA}
+
+    mender_flash_layout_extra ${B}/internal-flash.xml
+    mender_flash_layout_extra ${B}/external-flash.xml
+}

@@ -1,3 +1,5 @@
+require tegra-mender-layout.inc
+
 DEPENDS:append = " tegra-helper-scripts-native"
 PATH =. "${STAGING_BINDIR_NATIVE}/tegra-flash:"
 
@@ -10,15 +12,8 @@ mender_flash_layout_adjust() {
 }
 
 do_install:append() {
-    cat <<EOF >${WORKDIR}/UDA.xml
-<partition_layout>
-    <device>
-        <partition name="UDA">
-            <filename> DATAFILE </filename>
-        </partition>
-    </device>
-</partition_layout>
-EOF
+    mender_flash_layout_write_map ${WORKDIR}/UDA.xml \
+        ${TEGRA_MENDER_LAYOUT_FILENAMES} ${TEGRA_MENDER_LAYOUT_FILENAMES_EXTRA}
 
     mender_flash_layout_adjust "${PARTITION_LAYOUT_TEMPLATE}"
     mender_flash_layout_adjust "${PARTITION_LAYOUT_EXTERNAL}"
