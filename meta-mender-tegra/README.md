@@ -145,9 +145,16 @@ The artifact keeps the canonical `.mender` name and still provides
 `rootfs-image.version`, so the upload and the server side are unchanged. Only the
 payload type inside differs; `mender-artifact read` tells the two apart.
 
-Verification window, why `nv_update_verifier` is disabled rather than removed, and
-the scheme's limitations:
-[meta-mender-tegra-native/README.md](meta-mender-tegra-native/README.md).
+That layer also carries the optional recovery system, `TEGRA_MENDER_RECOVERY`,
+filling the `recovery` partition meta-tegra allocates and leaves empty. L4TLauncher
+boots it by itself once no rootfs slot is bootable, and the system it finds there
+runs the Mender client under the same identity, so a deployment repairs a board
+whose A/B pair is gone.
+
+Verification window, why `nv_update_verifier` is disabled rather than removed, the
+scheme's limitations and the recovery system:
+[meta-mender-tegra-native/README.md](meta-mender-tegra-native/README.md) and
+[meta-mender-tegra-native/docs/recovery-system.md](meta-mender-tegra-native/docs/recovery-system.md).
 
 ## Shell portability
 

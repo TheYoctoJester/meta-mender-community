@@ -101,4 +101,49 @@ fallback.
 
 - **The unbootable-rootfs fallback gap** applies as it does to the classic scheme.
   A/B recovers a rootfs that boots but never commits, not one that fails to boot,
-  and a rootfs that panics is never condemned at all.
+  and a rootfs that panics is never condemned at all. The recovery system below
+  covers the case where that leaves both slots gone.
+
+## Recovery system
+
+```
+TEGRA_MENDER_RECOVERY = "1"
+```
+
+Builds a small RAM-only system into the `recovery` partition, which meta-tegra
+allocates on nearly every Tegra layout and otherwise leaves empty. L4TLauncher
+boots that partition on request, and also **by itself** once no rootfs slot is
+bootable, so filling it turns "both A and B are gone" from a reflash into a boot.
+
+The recovery system mounts the Mender data partition, so it holds the same device
+key, the same identity and the same state database as the main system, and
+authenticates to the server as the same device. It runs `mender-auth` and
+`mender-update` in managed mode, so a device sitting in recovery appears in the
+Mender UI and a deployment can be pushed to it. The deployment lands on the
+inactive slot exactly as it would from a running rootfs, the capsule switches the
+boot chain, and the client in the slot that just came up commits it.
+
+This is a feature of this scheme rather than a scheme of its own, which is why it
+stays a variable and lives here: the recovery context is implemented in
+`tegra-rootfs-image`, and the classic scheme's state scripts cannot install from a
+system that is not one of the A/B slots. Before the layer split that dependency had
+to be asserted at parse time, since both were variables.
+
+Two things to know before enabling it:
+
+**It moves `ServerURL` and `TenantToken` into the persistent configuration** on the
+data partition, because `/etc/mender/mender.conf` lives in a rootfs slot and a
+device in recovery has usually lost both. That is an improvement for the rootfs
+image, which stops carrying the tenant token, but the keys are written into the data
+image at flash time only. A device flashed before this was enabled has no persistent
+`ServerURL`, so updating it to an image built with this enabled would leave it unable
+to find the server. Enable it at flash time, not mid-life.
+
+**The recovery partition is 80 MiB** (`TEGRA_RECOVERY_KERNEL_PART_SIZE`), and the
+build fails if the image does not fit, with a warning once it passes 85%. The kernel
+is most of it. [docs/recovery-system.md](docs/recovery-system.md) covers the levers.
+
+That document has the rest: how to build it and how to put it on a board without a
+reflash, every configuration variable, exactly when the firmware boots the
+partition, what the update module does differently in a recovery context, and what
+has and has not been verified on hardware.
