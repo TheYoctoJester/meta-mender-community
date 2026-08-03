@@ -19,10 +19,26 @@
 # verdict leaves one behind. Treating any marker as "never verify" would then
 # stop verification for good, and a slot that is never verified does not survive
 # a boot, so the stale marker would condemn the very slot it was left on.
+#
+# It must also not run from the recovery system. This script ships with the
+# update module, and the recovery system installs that module, so it is present
+# there even though there is no systemd to run its unit. Verifying from recovery
+# would mark the boot chain's slot good and restore its retry count, and the
+# usual reason for being in recovery is that both slots ran out of retries. That
+# would undo the very condition that produced the recovery boot and turn a clean
+# recovery into a boot loop. The update module refuses ArtifactCommit in the
+# recovery context for the same reason.
 set -u
 
 PENDING="${TEGRA_UPDATE_PENDING:-/var/lib/mender/tegra-update-pending}"
 NVBOOTCTRL="${TEGRA_NVBOOTCTRL:-nvbootctrl}"
+RECOVERY_MARKER="${TEGRA_RECOVERY_MARKER:-/etc/tegra-mender-recovery}"
+
+if [ -e "$RECOVERY_MARKER" ]; then
+    echo "tegra-rootfs-verify: running from the recovery system; there is no" \
+         "booted rootfs slot to mark good, refusing" 1>&2
+    exit 0
+fi
 
 if [ -e "$PENDING" ]; then
     target="$(cat "$PENDING" 2>/dev/null || true)"

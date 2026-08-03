@@ -21,6 +21,20 @@
 # chain active, and rootfs slots are paired to bootloader slots, so the rootfs
 # follows. Calling set-active-boot-slot as well would make the capsule target
 # the wrong chain, so it is used only to undo a switch during rollback.
+#
+# The module runs in two contexts, and behaves differently in each:
+#
+#   rootfs    the ordinary case. / is one of the two slots, and nvbootctrl must
+#             agree about which one. Writing the running slot would destroy the
+#             system mid-update, so a disagreement is fatal.
+#
+#   recovery  running from the recovery partition's ramdisk. / is neither slot,
+#             which is precisely why both of them can be written. The active
+#             slot is then whichever one the boot chain points at, and the
+#             assertion is inverted: / must NOT be a slot.
+#
+# The recovery context is identified by a marker file that only the recovery
+# image ships, never inferred from a failed lookup.
 
 set -ue
 
@@ -37,6 +51,18 @@ PROC_MOUNTS="${TEGRA_PROC_MOUNTS:-/proc/mounts}"
 ESP_CAPSULE="${ESP_CAPSULE_DIR}/TEGRA_BL.Cap"
 CAPSULE_STASH="${FILES}/tmp/tegra-bl.cap"
 ORIG_SLOT_FILE="${FILES}/tmp/orig-slot"
+# Which slot this deployment is writing. Recorded separately from orig-slot
+# because rollback has to be able to re-flag it unbootable without recomputing
+# it from a slot mapping that may have moved on.
+TARGET_SLOT_FILE="${FILES}/tmp/target-slot"
+# Shipped only by the recovery image. Its presence is what selects the recovery
+# context; nothing is inferred from a lookup that happened to fail.
+RECOVERY_MARKER="${TEGRA_RECOVERY_MARKER:-/etc/tegra-mender-recovery}"
+# Mender's persistent configuration, on the data partition. Carries RootfsPartA
+# and RootfsPartB, which is the last resort for resolving the slots when the
+# partlabel symlinks are absent.
+PERSISTENT_CONF="${TEGRA_PERSISTENT_CONF:-/var/lib/mender/mender.conf}"
+EFIVARS_DIR="${TEGRA_EFIVARS_DIR:-/sys/firmware/efi/efivars}"
 # Persistent, and deliberately not under $FILES: tegra-rootfs-verify reads it on
 # the next boot to decide whether the running slot may be marked good yet.
 UPDATE_PENDING="${TEGRA_UPDATE_PENDING:-/var/lib/mender/tegra-update-pending}"
@@ -49,6 +75,48 @@ EFI_GLOBAL_GUID="8be4df61-93ca-11d2-aa0d-00e098032b8c"
 # made the device unreachable.
 log() {
     echo "tegra-rootfs-image[$STATE]: $*" 1>&2
+}
+
+# Which context are we running in? See the header comment.
+running_context() {
+    if [ -e "$RECOVERY_MARKER" ]; then
+        echo "recovery"
+    else
+        echo "rootfs"
+    fi
+}
+
+# Resolve a GPT partition label to a device node.
+#
+# The partlabel symlinks come from udev, and the recovery system is an
+# initramfs with no udev, so /dev/disk/by-partlabel does not exist there at
+# all. Fall back to reading the labels straight out of the partition table, and
+# finally to the RootfsPartA/RootfsPartB that meta-mender writes into the
+# persistent configuration on the data partition.
+resolve_partlabel() {
+    _want="$1"
+    if [ -e "${PARTLABEL_DIR}/${_want}" ]; then
+        readlink -f "${PARTLABEL_DIR}/${_want}"
+        return 0
+    fi
+    _dev=$(lsblk -n -r -o NAME,PARTLABEL 2>/dev/null \
+           | awk -v w="$_want" '$2 == w { print "/dev/" $1; exit }')
+    if [ -z "$_dev" ]; then
+        _dev=$(blkid -t "PARTLABEL=${_want}" -o device 2>/dev/null | head -n 1)
+    fi
+    if [ -z "$_dev" ] && [ -r "$PERSISTENT_CONF" ]; then
+        case "$_want" in
+            APP)   _key="RootfsPartA" ;;
+            APP_b) _key="RootfsPartB" ;;
+            *)     _key="" ;;
+        esac
+        if [ -n "$_key" ]; then
+            _dev=$(sed -n 's/.*"'"$_key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                   "$PERSISTENT_CONF" | head -n 1)
+        fi
+    fi
+    [ -n "$_dev" ] || return 1
+    readlink -f "$_dev"
 }
 
 # Slot number (0/1) -> the real device node for that slot's rootfs. The BSP
@@ -74,28 +142,54 @@ booted_disk() {
 # is normally used, rather than relying on udev having settled favourably.
 slot_device() {
     case "$1" in
-        0) _lbl_name="APP" ;;
-        1) _lbl_name="APP_b" ;;
+        0) _lbl="APP" ;;
+        1) _lbl="APP_b" ;;
         *) echo "unexpected rootfs slot '$1'" 1>&2; return 1 ;;
     esac
+    # Prefer the label as it appears on the disk / was mounted from: on a board
+    # with two Tegra layouts the labels are duplicated. In the recovery context
+    # there is no such disk to derive from, and resolve_partlabel's own chain
+    # (udev symlinks, then lsblk, then blkid, then the persistent config) takes
+    # over, which is what that context needs.
     if _disk=$(booted_disk); then
         _on_disk=$(lsblk -n -r -o NAME,PARTLABEL "/dev/$_disk" 2>/dev/null \
-                   | awk -v l="$_lbl_name" '$2 == l { print "/dev/" $1; exit }')
+                   | awk -v l="$_lbl" '$2 == l { print "/dev/" $1; exit }')
         if [ -n "$_on_disk" ]; then
             echo "$_on_disk"
             return 0
         fi
     fi
-    readlink -f "${PARTLABEL_DIR}/${_lbl_name}"
+    _d=$(resolve_partlabel "$_lbl") || {
+        echo "cannot resolve the partition labelled '$_lbl'" 1>&2
+        return 1
+    }
+    echo "$_d"
 }
 
 # Device the root filesystem is actually mounted from, canonicalised the same
-# way, so it can be compared with slot_device output.
+# way slot_device output is, so the two can be compared.
+#
+# Only the known symlink forms are resolved. Anything else is passed through
+# untouched, which is what the stock rootfs-image module does in resolve_rootfs()
+# and for the same reason. Canonicalising unconditionally is wrong here: a
+# ramdisk root appears in /proc/mounts as the bare word "rootfs", and
+# `readlink -f rootfs` is not a no-op. busybox returns empty, GNU coreutils
+# returns "$PWD/rootfs" because the module runs with its cwd inside mender's
+# payload directory. Neither is a device, so the comparison happened to give the
+# right answer either way, but only by accident, and it is the same
+# host-versus-target divergence that made `od -j` misread an efivar.
 root_device() {
     _r=$(while read -r dev mnt _rest; do
              [ "$mnt" = "/" ] && { echo "$dev"; break; }
          done < "$PROC_MOUNTS")
-    readlink -f "$_r"
+    case "$_r" in
+        /dev/root|/dev/disk/by-partlabel/*|/dev/disk/by-partuuid/*|/dev/disk/by-uuid/*)
+            readlink -f "$_r"
+            ;;
+        *)
+            echo "$_r"
+            ;;
+    esac
 }
 
 # The ESP of the disk the running system booted from.
@@ -190,15 +284,52 @@ ensure_esp_mounted() {
     return 0
 }
 
-# Never write to the slot we are running from. nvbootctrl and the mounted root
-# must agree about which slot is active; if they do not, the slot bookkeeping is
-# wrong and writing would destroy the running system mid-update. Fail the
-# deployment instead. The stock rootfs-image module guards the same way, via
-# check_device_matches_root.
+# Never write to the slot we are running from, and never write on a guess.
+#
+# In the rootfs context nvbootctrl and the mounted root must agree about which
+# slot is active; if they do not, the bookkeeping is wrong and writing would
+# destroy the running system mid-update. The stock rootfs-image module guards
+# the same way, via check_device_matches_root.
+#
+# In the recovery context the assertion is inverted. / is a ramdisk, so it must
+# be neither slot. A / that *is* a slot here means the marker is lying about
+# where we are, which is worse than either context on its own, so it is fatal.
 assert_slot_mapping_sane() {
-    _act=$(slot_device "$(current_slot)")
-    _pas=$(slot_device "$(passive_slot)")
+    _ctx=$(running_context)
+    _cur=$(current_slot) || {
+        log "FATAL: nvbootctrl could not report the current rootfs slot"
+        return 1
+    }
+    case "$_cur" in
+        0|1) ;;
+        *) log "FATAL: nvbootctrl reported an unusable current slot '$_cur'"; return 1 ;;
+    esac
+
+    _act=$(slot_device "$_cur") || return 1
+    _pas=$(slot_device "$(passive_slot)") || return 1
     _root=$(root_device)
+
+    if [ "$_act" = "$_pas" ]; then
+        log "FATAL: both slots resolved to the same device $_act"
+        return 1
+    fi
+
+    if [ "$_ctx" = "recovery" ]; then
+        if [ -n "$_root" ] && { [ "$_root" = "$_act" ] || [ "$_root" = "$_pas" ]; }; then
+            log "FATAL: recovery context, but / is mounted from slot device $_root"
+            return 1
+        fi
+        # The boot chain is the only statement of which slot is 'active' here,
+        # so cross-check nvbootctrl against the firmware variable it derives
+        # from rather than trusting a single source.
+        _chain=$(bootchain_os_slot)
+        if [ -n "$_chain" ] && [ "$_chain" != "$_cur" ]; then
+            log "FATAL: nvbootctrl says slot $_cur but BootChainOsCurrent says $_chain"
+            return 1
+        fi
+        log "recovery context: active slot $_cur ($_act), target $_pas, / is $_root"
+        return 0
+    fi
 
     if [ -z "$_root" ]; then
         log "FATAL: cannot determine the root device from $PROC_MOUNTS"
@@ -214,6 +345,23 @@ assert_slot_mapping_sane() {
     fi
     log "slot mapping sane: active $_act, passive $_pas"
     return 0
+}
+
+# The UEFI boot chain currently selected, as a slot number, or empty if the
+# variable cannot be read. efivarfs prefixes the value with a 4-byte attribute
+# word, so the payload starts at byte 5.
+#
+# Skip those four bytes with dd, not with 'od -j'. The busybox od on the target
+# silently ignores -j and reports the first byte instead, which is the low byte
+# of the attribute word: 6 for this variable, since L4TLauncher writes it with
+# BOOTSERVICE_ACCESS|RUNTIME_ACCESS. That reads as a plausible-looking slot
+# number and made the module refuse every deployment with "nvbootctrl says slot
+# 0 but BootChainOsCurrent says 6". Note the busybox on the *build host* does
+# honour -j, so this cannot be reproduced off-target.
+bootchain_os_slot() {
+    _v="${EFIVARS_DIR}/BootChainOsCurrent-${ROOTFS_STATUS_GUID}"
+    [ -r "$_v" ] || return 0
+    dd if="$_v" bs=1 skip=4 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n'
 }
 
 slot_letter() {
@@ -289,6 +437,13 @@ case "$STATE" in
         assert_slot_mapping_sane || exit 1
         target="$(passive_slot)"
         target_dev="$(slot_device "$target")"
+
+        # Remember the target before touching it, so a rollback can put its
+        # unbootable flag back without having to recompute the slot mapping.
+        mkdir -p "${FILES}/tmp"
+        echo "$target" > "${TARGET_SLOT_FILE}.tmp"
+        mv "${TARGET_SLOT_FILE}.tmp" "$TARGET_SLOT_FILE"
+        sync
 
         # From the first byte written until ArtifactInstall clears this again,
         # the slot holds a torn filesystem. Leaving it flagged bootable would let
@@ -429,6 +584,16 @@ case "$STATE" in
         ;;
 
     ArtifactCommit)
+        # Committing means "the slot I am running from works". From the recovery
+        # system nothing has booted the new slot yet, so there is nothing to
+        # attest to and nvbootctrl verify would bless the wrong thing. An
+        # install started in recovery is committed after the reboot, by the
+        # client in the slot it just wrote.
+        if [ "$(running_context)" = "recovery" ]; then
+            log "FATAL: refusing to commit from the recovery system; the update" \
+                "must be committed by the slot it installed, after the reboot"
+            exit 1
+        fi
         # Marks the running bootloader and rootfs slot good, and resets the
         # rootfs retry counter. Without this UEFI reverts on a later boot.
         log "verifying slot $(current_slot)"
@@ -458,6 +623,24 @@ case "$STATE" in
         rm -f "$UPDATE_PENDING"
         sync
 
+        # ArtifactInstall cleared the target's unbootable flag so the firmware
+        # would accept it after the switch. If we are rolling back while still
+        # in the recovery context, that switch never happened and the target
+        # holds a torn filesystem, so the flag has to go back. Getting this
+        # wrong is worse here than in the rootfs context: a device in recovery
+        # usually got there because the *other* slot is unbootable too, so a
+        # target left flagged bootable is the firmware's next choice, and it
+        # would boot the half-written one instead of returning to recovery.
+        #
+        # Only in the recovery context. If we already rebooted into the target
+        # then we are running from it, and flagging the running slot unbootable
+        # would strand the device.
+        if [ "$(running_context)" = "recovery" ] && [ -f "$TARGET_SLOT_FILE" ]; then
+            _tgt=$(cat "$TARGET_SLOT_FILE")
+            log "recovery context: re-flagging the half-written slot $_tgt unbootable"
+            mark_unbootable "$_tgt" || log "WARNING: could not re-flag slot $_tgt"
+        fi
+
         if [ ! -f "$ORIG_SLOT_FILE" ]; then
             log "no recorded original slot; nothing further to undo"
             exit 0
@@ -486,6 +669,16 @@ case "$STATE" in
         ;;
 
     ArtifactFailure)
+        # Belt and braces for the same hazard ArtifactRollback covers: if the
+        # rollback state did not run, or ran and failed, a target whose
+        # unbootable flag was cleared must not be left as the firmware's next
+        # choice. Marking an already-unbootable slot unbootable is a no-op, so
+        # doing this twice costs nothing.
+        if [ "$(running_context)" = "recovery" ] && [ -f "$TARGET_SLOT_FILE" ]; then
+            _tgt=$(cat "$TARGET_SLOT_FILE")
+            log "recovery context: ensuring slot $_tgt is flagged unbootable"
+            mark_unbootable "$_tgt" || log "WARNING: could not re-flag slot $_tgt"
+        fi
         ;;
 
     Cleanup)
