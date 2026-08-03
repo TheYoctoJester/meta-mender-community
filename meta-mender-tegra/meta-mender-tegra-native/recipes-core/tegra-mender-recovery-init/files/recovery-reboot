@@ -1,0 +1,30 @@
+#!/bin/sh
+# A working `reboot` for the recovery system.
+#
+# mender-update finishes ArtifactInstall by running `reboot` and then waiting
+# for the system to come back. The ordinary busybox reboot asks PID 1 to bring
+# the system down, but PID 1 here is the recovery init, a shell script that has
+# no idea what that request means. The result is silent: nothing reboots, the
+# capsule stays staged, and the deployment sits waiting for a restart that never
+# happens. That is exactly what it did the first time this was tried on
+# hardware.
+#
+# This is installed into /usr/local/sbin, which the recovery init puts at the
+# front of PATH, so it takes precedence over busybox's reboot without having to
+# fight the alternatives system over /sbin/reboot.
+echo "[recovery] rebooting" > /dev/console 2>/dev/null
+
+sync
+
+# The ESP matters more than the others: the capsule that performs the slot
+# switch was just written there, and an unflushed FAT means the firmware finds
+# nothing to apply. Unmounting is the reliable way to flush it.
+umount /boot/efi 2>/dev/null
+
+# /data usually cannot be unmounted, because mender-update still has its state
+# database open, and this script is running as a child of that very deployment.
+# Syncing is what matters; the recovery init fscks the partition on the way back
+# in regardless.
+sync
+
+exec busybox reboot -f

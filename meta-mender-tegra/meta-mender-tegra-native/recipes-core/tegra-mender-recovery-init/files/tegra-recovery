@@ -1,0 +1,328 @@
+#!/bin/sh
+# tegra-recovery: repair the Tegra rootfs A/B slots from the recovery system.
+#
+# Deliberately does NOT use the Mender client. Both the stock `rootfs-image`
+# module and the Tegra-native `tegra-rootfs-image` module refuse to run here,
+# by design: they compare the slot they are about to touch against the device
+# backing `/`, and in the recovery system `/` is a ramdisk. See
+# support/modules/rootfs-image:check_device_matches_root() and
+# tegra-rootfs-image:assert_slot_mapping_sane().
+#
+# So this consumes a Mender artifact rather than running Mender. A .mender file
+# is a plain tar of tars, which busybox tar can stream, so no Mender tooling is
+# needed to get the rootfs payload out of one.
+#
+# This is the manual fallback. The normal path is the Mender client running in
+# the recovery system, which uses the extended tegra-rootfs-image module and
+# does understand the recovery context. Reach for this when the server is
+# unreachable, or when the data partition is too damaged for the client to run.
+set -u
+
+PARTLABEL_DIR="${TEGRA_PARTLABEL_DIR:-/dev/disk/by-partlabel}"
+PERSISTENT_CONF="${TEGRA_PERSISTENT_CONF:-/var/lib/mender/mender.conf}"
+
+die() { echo "tegra-recovery: $*" >&2; exit 1; }
+
+# Resolve a GPT partition label to a device node.
+#
+# There is no udev in this initramfs, so /dev/disk/by-partlabel does not exist,
+# which is exactly the assumption the on-device update modules make. Fall back
+# to reading the labels out of the partition table. Try the symlink first
+# anyway, so the same script also works when run from a full system.
+resolve_partlabel() {
+    _want="$1"
+    if [ -e "${PARTLABEL_DIR}/${_want}" ]; then
+        readlink -f "${PARTLABEL_DIR}/${_want}"
+        return 0
+    fi
+    _dev=$(lsblk -n -r -o NAME,PARTLABEL 2>/dev/null \
+           | awk -v w="$_want" '$2 == w { print "/dev/" $1; exit }')
+    if [ -z "$_dev" ]; then
+        _dev=$(blkid -t "PARTLABEL=${_want}" -o device 2>/dev/null | head -n 1)
+    fi
+    # Last resort: the RootfsPartA/RootfsPartB that meta-mender writes into the
+    # persistent configuration on the data partition. The update module has the
+    # same fallback, and this tool needs it more, not less: it is the one you
+    # reach for when the partition table itself is suspect.
+    if [ -z "$_dev" ] && [ -r "$PERSISTENT_CONF" ]; then
+        case "$_want" in
+            APP)   _key="RootfsPartA" ;;
+            APP_b) _key="RootfsPartB" ;;
+            *)     _key="" ;;
+        esac
+        if [ -n "$_key" ]; then
+            _dev=$(sed -n 's/.*"'"$_key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                   "$PERSISTENT_CONF" | head -n 1)
+        fi
+    fi
+    [ -n "$_dev" ] || return 1
+    echo "$_dev"
+}
+
+slot_device() {
+    case "$1" in
+        0|a|A) _lbl="APP" ;;
+        1|b|B) _lbl="APP_b" ;;
+        *) die "unknown slot '$1' (want 0/A or 1/B)" ;;
+    esac
+    _d=$(resolve_partlabel "$_lbl") || die "cannot resolve partition labelled '$_lbl'"
+    echo "$_d"
+}
+
+slot_number() {
+    case "$1" in
+        0|a|A) echo 0 ;;
+        1|b|B) echo 1 ;;
+        *) die "unknown slot '$1' (want 0/A or 1/B)" ;;
+    esac
+}
+
+cmd_status() {
+    echo "=== rootfs slots ==="
+    nvbootctrl -t rootfs dump-slots-info 2>&1
+    echo
+    echo "=== bootloader slots ==="
+    nvbootctrl dump-slots-info 2>&1
+    echo
+    echo "=== partitions ==="
+    lsblk -o NAME,PARTLABEL,SIZE 2>/dev/null || cat /proc/partitions
+    echo
+    echo "=== slot filesystems ==="
+    for s in 0 1; do
+        if ! d=$(slot_device "$s" 2>/dev/null); then
+            echo "slot $s: COULD NOT RESOLVE THE PARTITION"
+            continue
+        fi
+        printf 'slot %s (%s): ' "$s" "$d"
+        if dumpe2fs -h "$d" >/dev/null 2>&1; then
+            dumpe2fs -h "$d" 2>/dev/null | sed -n 's/^Filesystem state: *//p' \
+                | tr -d '\n'
+            echo " (ext4 ok)"
+        else
+            echo "NO VALID EXT4 SUPERBLOCK"
+        fi
+    done
+}
+
+# Stream the rootfs payload out of a .mender artifact onto a block device.
+#
+# Layout of a Mender artifact (format version 3):
+#   version
+#   manifest
+#   manifest.sig        (optional)
+#   header.tar.gz
+#   data/0000.tar.gz    -> contains exactly one file, the rootfs image
+cmd_install() {
+    slot="${1:?usage: tegra-recovery install <slot> <artifact.mender>}"
+    art="${2:?usage: tegra-recovery install <slot> <artifact.mender>}"
+    [ -f "$art" ] || die "no such artifact: $art"
+    dev=$(slot_device "$slot")
+
+    echo "tegra-recovery: artifact  $art"
+    echo "tegra-recovery: target    slot $slot -> $dev"
+
+    ver=$(tar xOf "$art" version 2>/dev/null) \
+        || die "cannot read 'version' from $art; is it a Mender artifact?"
+    echo "tegra-recovery: artifact format: $(echo "$ver" | tr -d '\n')"
+
+    inner=$(tar tf "$art" 2>/dev/null | grep '^data/0000' | head -n 1)
+    [ -n "$inner" ] || die "no data/0000* payload in $art"
+    echo "tegra-recovery: payload   $inner"
+
+    case "$inner" in
+        *.tar.gz|*.tgz) tflag="xzOf" ;;
+        *.tar)          tflag="xOf"  ;;
+        *)              die "unexpected payload container '$inner'" ;;
+    esac
+
+    # The payload container holds more than one file for the Tegra-native
+    # scheme: the rootfs image and tegra-bl.cap, the UEFI capsule. Take only
+    # the rootfs. Applying the capsule here would be actively wrong, because it
+    # flips the bootloader chain, and repairing a rootfs is not an update.
+    #
+    # Read the member names out of the artifact's `manifest`, not by listing
+    # the payload container. The manifest is a few hundred bytes near the front
+    # of the outer tar and names every payload file as data/0000/<name>;
+    # listing the container instead would mean gunzipping the entire multi-GB
+    # rootfs image once just to learn what is in it, then again to write it.
+    members=$(tar xOf "$art" manifest 2>/dev/null \
+              | awk '{ print $2 }' \
+              | sed -n 's|^data/0000/||p')
+    [ -n "$members" ] || die "cannot read the payload list from the manifest"
+    echo "tegra-recovery: payload contains:"
+    echo "$members" | sed 's/^/                          /'
+
+    rootfs_member=$(echo "$members" | grep -vE '\.cap$' | head -n 1)
+    [ -n "$rootfs_member" ] || die "no rootfs image inside $inner"
+    echo "tegra-recovery: installing  $rootfs_member"
+    echo "$members" | grep -qE '\.cap$' \
+        && echo "tegra-recovery: ignoring the bootloader capsule on purpose"
+
+    echo "tegra-recovery: writing, this takes several minutes..."
+    if ! tar xOf "$art" "$inner" | tar "$tflag" - "$rootfs_member" | dd of="$dev" bs=1M 2>&1; then
+        die "write to $dev failed"
+    fi
+    sync
+    echo "tegra-recovery: checking the filesystem just written"
+    e2fsck -p -f "$dev" || echo "tegra-recovery: WARNING: e2fsck returned $?"
+    echo "tegra-recovery: slot $slot written"
+}
+
+# Write a raw rootfs image (not an artifact) to a slot.
+cmd_write_raw() {
+    slot="${1:?usage: tegra-recovery write-raw <slot> <image>}"
+    img="${2:?usage: tegra-recovery write-raw <slot> <image>}"
+    [ -f "$img" ] || die "no such image: $img"
+    dev=$(slot_device "$slot")
+    echo "tegra-recovery: $img -> slot $slot ($dev)"
+    if command -v mender-flash >/dev/null 2>&1; then
+        mender-flash --input "$img" --output "$dev" || die "mender-flash failed"
+    else
+        dd if="$img" of="$dev" bs=1M || die "dd failed"
+    fi
+    sync
+    e2fsck -p -f "$dev" || echo "tegra-recovery: WARNING: e2fsck returned $?"
+}
+
+cmd_activate() {
+    slot="${1:?usage: tegra-recovery activate <slot>}"
+    n=$(slot_number "$slot")
+    echo "tegra-recovery: setting active rootfs slot to $n"
+    nvbootctrl -t rootfs set-active-boot-slot "$n" || die "nvbootctrl failed"
+    nvbootctrl -t rootfs dump-slots-info
+}
+
+cmd_fsck() {
+    slot="${1:?usage: tegra-recovery fsck <slot>}"
+    dev=$(slot_device "$slot")
+    echo "tegra-recovery: e2fsck -f -y $dev"
+    e2fsck -f -y "$dev"
+    echo "tegra-recovery: e2fsck exit $?"
+}
+
+cmd_wipe() {
+    slot="${1:?usage: tegra-recovery wipe <slot>}"
+    dev=$(slot_device "$slot")
+    echo "tegra-recovery: destroying the superblocks on $dev"
+    dd if=/dev/zero of="$dev" bs=1M count=64 2>&1
+    sync
+}
+
+L4T_BOOTMODE_VAR=/sys/firmware/efi/efivars/L4TDefaultBootMode-781e084c-a330-417c-b678-38e696380cb9
+
+# Boot mode values, from edk2-nvidia Silicon/NVIDIA/Include/NVIDIAConfiguration.h:
+#   0 GRUB, 1 DIRECT (extlinux), 2 BOOTIMG, 3 RECOVERY, 0xFF DEFAULT
+set_bootmode() {
+    _val="$1"
+    [ -f "$L4T_BOOTMODE_VAR" ] || die "L4TDefaultBootMode efivar not present"
+    chattr -i "$L4T_BOOTMODE_VAR" 2>/dev/null
+    printf "\007\000\000\000\\$(printf '%03o' "$_val")\000\000\000" > "$L4T_BOOTMODE_VAR" \
+        || die "failed to write L4TDefaultBootMode"
+    echo "tegra-recovery: L4TDefaultBootMode = $_val"
+}
+
+cmd_arm() {
+    echo "tegra-recovery: arming a recovery boot on the next reset"
+    set_bootmode 3
+}
+
+cmd_disarm() {
+    echo "tegra-recovery: next reset boots normally via extlinux"
+    set_bootmode 1
+}
+
+# RootfsStatusSlot{A,B}: UINT32, NVIDIA_OS_STATUS_NORMAL 0x0 /
+# NVIDIA_OS_STATUS_UNBOOTABLE 0xFF, attributes NV|BS|RT. From edk2-nvidia
+# L4TRootfsValidation.c and NVIDIAConfiguration.h. ValidateRootfsStatus falls
+# back to a recovery boot when both slots read UNBOOTABLE, which is the whole
+# reason a populated recovery partition is worth having.
+EFIVARS=/sys/firmware/efi/efivars
+NV_GUID=781e084c-a330-417c-b678-38e696380cb9
+
+write_slot_status() {
+    _slot="$1"; _val="$2"
+    case "$_slot" in
+        0|a|A) _var="RootfsStatusSlotA" ;;
+        1|b|B) _var="RootfsStatusSlotB" ;;
+        *) die "unknown slot '$_slot'" ;;
+    esac
+    _path="${EFIVARS}/${_var}-${NV_GUID}"
+    [ -f "$_path" ] || die "$_var not present in efivarfs"
+    chattr -i "$_path" 2>/dev/null
+    printf "\007\000\000\000\\$(printf '%03o' "$_val")\000\000\000" > "$_path" \
+        || die "failed to write $_var"
+    printf 'tegra-recovery: %s = 0x%02x\n' "$_var" "$_val"
+}
+
+cmd_mark() {
+    _slot="${1:?usage: tegra-recovery mark <slot> normal|unbootable}"
+    case "${2:-}" in
+        normal)     write_slot_status "$_slot" 0 ;;
+        unbootable) write_slot_status "$_slot" 255 ;;
+        *) die "usage: tegra-recovery mark <slot> normal|unbootable" ;;
+    esac
+}
+
+cmd_reset_slots() {
+    echo "tegra-recovery: marking both rootfs slots bootable again"
+    write_slot_status 0 0
+    write_slot_status 1 0
+    nvbootctrl -t rootfs dump-slots-info 2>&1 | grep -E "slot: [01]|slot:"
+}
+
+cmd_help() {
+    cat <<'EOF'
+tegra-recovery - repair the Tegra rootfs A/B slots from RAM
+
+  tegra-recovery status
+        Show both slot state machines, the partition table, and whether each
+        rootfs slot still has a valid ext4 superblock.
+
+  tegra-recovery install <slot> <artifact.mender>
+        Stream the rootfs payload out of a Mender artifact into the slot.
+        <slot> is 0/A or 1/B. Does not run the Mender client; see the comment
+        at the top of this script for why.
+
+  tegra-recovery write-raw <slot> <image.ext4>
+        Write a raw rootfs image into the slot.
+
+  tegra-recovery activate <slot>
+        Point the next boot at the slot (nvbootctrl -t rootfs).
+
+  tegra-recovery fsck <slot>
+        Run e2fsck -f -y against the slot.
+
+  tegra-recovery wipe <slot>
+        Zero the first 64 MiB of the slot. For testing the recovery path itself.
+
+  tegra-recovery mark <slot> normal|unbootable
+        Write RootfsStatusSlotA/B directly. Marking both slots unbootable is
+        how you exercise the automatic recovery fallback.
+
+  tegra-recovery reset-slots
+        Mark both rootfs slots bootable again.
+
+  tegra-recovery arm | disarm
+        Set L4TDefaultBootMode to RECOVERY (3) or DIRECT (1). The recovery
+        init disarms automatically at startup, so getting here always leaves
+        the board booting normally on the next reset unless you re-arm it.
+
+Fetching an artifact: the network is up, so
+  wget -O /tmp/a.mender http://<host>/artifact.mender
+EOF
+}
+
+case "${1:-help}" in
+    status)     shift; cmd_status "$@" ;;
+    install)    shift; cmd_install "$@" ;;
+    write-raw)  shift; cmd_write_raw "$@" ;;
+    activate)   shift; cmd_activate "$@" ;;
+    fsck)       shift; cmd_fsck "$@" ;;
+    wipe)       shift; cmd_wipe "$@" ;;
+    arm)        shift; cmd_arm "$@" ;;
+    mark)       shift; cmd_mark "$@" ;;
+    reset-slots) shift; cmd_reset_slots "$@" ;;
+    disarm)     shift; cmd_disarm "$@" ;;
+    help|-h|--help) cmd_help ;;
+    *)          echo "tegra-recovery: unknown command '$1'" >&2; cmd_help; exit 1 ;;
+esac

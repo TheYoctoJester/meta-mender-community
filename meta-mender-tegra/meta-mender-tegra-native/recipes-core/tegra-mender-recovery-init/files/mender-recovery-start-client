@@ -1,0 +1,95 @@
+#!/bin/sh
+# Start the Mender client inside the recovery system.
+#
+# The init calls this once at startup. It is a separate script so that an
+# operator can call it again after fixing whatever stopped it working the first
+# time: a wrong clock, an unmounted data partition, a missing server
+# configuration.
+#
+# mender-auth and mender-update talk over the system bus, so dbus has to be up
+# first. Neither uses sd_notify (mender-authd is Type=dbus, mender-updated is
+# Type=idle), so starting them by hand is equivalent to what systemd does on the
+# main system.
+set -u
+
+say() { echo "[recovery] $*"; }
+
+if [ ! -d /data/mender ]; then
+    say "ERROR: /data/mender is not there. The data partition holds the device"
+    say "       key and the state database; without it this client would be a"
+    say "       different device to the server. Mount it first."
+    exit 1
+fi
+
+now=$(date +%s 2>/dev/null || echo 0)
+if [ "$now" -lt 1700000000 ]; then
+    say "ERROR: the clock reads $(date -u), which no certificate will validate"
+    say "       against. Set it first: date -s \"YYYY-MM-DD HH:MM:SS\""
+    exit 1
+fi
+
+if [ ! -s /data/mender/mender.conf ]; then
+    say "WARNING: /data/mender/mender.conf is missing or empty."
+    say "         ServerURL and TenantToken are provisioned there at flash time"
+    say "         (MENDER_PERSISTENT_CONFIGURATION_VARS). Without them the client"
+    say "         cannot authenticate."
+fi
+
+mkdir -p /run/dbus /var/lib/dbus
+# dbus refuses to start without a machine ID, and an initramfs has no persistent
+# one. Any ID will do: it is scoped to this boot of a system that exists only in
+# RAM, and the Mender device identity comes from the data partition.
+if [ ! -f /var/lib/dbus/machine-id ]; then
+    if [ -f /etc/machine-id ]; then
+        cp /etc/machine-id /var/lib/dbus/machine-id
+    elif command -v dbus-uuidgen >/dev/null 2>&1; then
+        dbus-uuidgen --ensure=/var/lib/dbus/machine-id 2>/dev/null
+    fi
+fi
+[ -f /etc/machine-id ] || cp /var/lib/dbus/machine-id /etc/machine-id 2>/dev/null
+
+# Note: pgrep is present in this busybox but pkill is not, so only pgrep is used.
+if ! pgrep -f "dbus-daemon --system" >/dev/null 2>&1; then
+    if command -v dbus-daemon >/dev/null 2>&1; then
+        dbus-daemon --system --fork 2>/dev/null \
+            && say "dbus system bus started" \
+            || { say "ERROR: dbus-daemon failed to start"; exit 1; }
+    else
+        say "ERROR: no dbus-daemon in this image"
+        exit 1
+    fi
+fi
+
+# /var/log points into /var/volatile, which may not exist. A failed redirect
+# here kills the daemon before it starts, so prove the directory is writable and
+# fall back to /tmp rather than losing the client to a logging problem.
+LOGDIR=/var/log
+mkdir -p /var/volatile/log 2>/dev/null
+if ! touch "$LOGDIR/.probe" 2>/dev/null; then
+    LOGDIR=/tmp
+    say "WARNING: /var/log is not writable; logging to $LOGDIR instead"
+else
+    rm -f "$LOGDIR/.probe"
+fi
+
+for svc in mender-auth mender-update; do
+    if pgrep -x "$svc" >/dev/null 2>&1; then
+        say "$svc is already running"
+        continue
+    fi
+    if ! command -v "$svc" >/dev/null 2>&1; then
+        say "ERROR: $svc is not in this image"
+        exit 1
+    fi
+    # Append rather than truncate. A recovery boot that went wrong is usually
+    # diagnosed from the boot before it, and truncating throws that away
+    # exactly when it is wanted. The client timestamps every line, so an
+    # accumulating file is still readable.
+    "$svc" daemon >>"${LOGDIR}/${svc}.log" 2>&1 &
+    say "$svc started (log: ${LOGDIR}/${svc}.log)"
+    # mender-update needs mender-auth's bus name to be claimed before it can
+    # ask for a token, and there is no systemd here to order them.
+    [ "$svc" = "mender-auth" ] && sleep 2
+done
+
+say "the client is polling; a deployment can be pushed to this device now"
