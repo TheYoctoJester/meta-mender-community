@@ -34,9 +34,45 @@ else
 	next_rootfs_dev="/dev/disk/by-partlabel/APP"
 fi
 
+# Stage the capsule on the ESP of the disk this system booted from.
+#
+# A board can carry more than one Tegra layout, an NVMe and an SD card being the
+# obvious pair. Both then have a partition labelled 'esp' and, having been written
+# from the same esp.img, the same filesystem UUID, so nothing pins /boot/efi and
+# systemd's gpt-auto generator mounts whichever it finds first.
+#
+# Getting this wrong is silent. UEFI reads the capsule from the medium it booted,
+# so a capsule on the other disk arms nothing, the boot chain never switches, and
+# mender commits anyway: the device reports the new artifact while still running
+# the old rootfs. The mounted root is the only trustworthy statement of which
+# medium booted.
+#
+# Note that next_rootfs_dev above has the same exposure through
+# /dev/disk/by-partlabel, which is equally duplicated on such a board.
+ensure_esp_mounted() {
+	local root part disk want have
+	root=$(readlink -f "$(awk '$2 == "/" { print $1; exit }' /proc/mounts)")
+	part=${root##*/}
+	[ -n "$part" ] || return 0
+	disk=$(readlink -f "/sys/class/block/${part}/..")
+	disk=${disk##*/}
+	[ -n "$disk" ] && [ "$disk" != "block" ] || return 0
+	want=$(lsblk -n -r -o NAME,PARTLABEL "/dev/$disk" 2>/dev/null \
+	       | awk '$2 == "esp" { print "/dev/" $1; exit }')
+	[ -n "$want" ] || return 0
+	have=$(awk '$2 == "/boot/efi" { print $1; exit }' /proc/mounts)
+	[ -n "$have" ] && have=$(readlink -f "$have")
+	[ "$have" = "$want" ] && return 0
+	echo "/boot/efi is ${have:-nothing}, the booted disk's ESP is $want; remounting" >&2
+	[ -n "$have" ] && umount /boot/efi
+	mkdir -p /boot/efi
+	mount "$want" /boot/efi
+}
+
 tmp_mount=`mktemp -d`
 
 reset_unbootable_status $next_slot
+ensure_esp_mounted
 mkdir -p /boot/efi/EFI/UpdateCapsule
 mount -o ro $next_rootfs_dev $tmp_mount
 cp ${tmp_mount}/opt/nvidia/UpdateCapsule/tegra-bl.cap /boot/efi/EFI/UpdateCapsule/TEGRA_BL.Cap
