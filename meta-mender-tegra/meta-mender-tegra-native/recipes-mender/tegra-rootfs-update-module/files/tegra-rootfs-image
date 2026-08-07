@@ -129,7 +129,17 @@ esp_mounted_device() {
 # it is not when an old one is merely being cleaned up.
 ensure_esp_mounted() {
     _want=$(esp_device) || {
-        log "cannot determine the ESP of the booted disk"
+        # Fall back to whatever is mounted rather than refusing. That is what this
+        # module did before the derivation existed, it is correct on a board with
+        # only one ESP, and failing here would turn an environment the derivation
+        # cannot read into a failed deployment. Only an unmounted $ESP_MOUNT is
+        # fatal, which was the guard before.
+        _have=$(esp_mounted_device)
+        if [ -n "$_have" ]; then
+            log "cannot determine the booted disk's ESP; keeping $ESP_MOUNT as mounted ($_have)"
+            return 0
+        fi
+        log "cannot determine the ESP of the booted disk and nothing is mounted at $ESP_MOUNT"
         return 1
     }
     _have=$(esp_mounted_device)
