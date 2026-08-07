@@ -210,7 +210,15 @@ root_device() {
 # which medium UEFI booted, which is the same reasoning assert_slot_mapping_sane
 # already applies when it trusts the mounted root over the partition labels.
 esp_device() {
-    _rp=$(root_device) || return 1
+    # In the rootfs context the mounted root names the booted disk. In the
+    # recovery context / is a ramdisk and names nothing, so take the disk from a
+    # rootfs slot instead: both slots live on the medium the recovery system was
+    # booted from, which is the medium UEFI will read the capsule from.
+    if [ "$(running_context)" = "recovery" ]; then
+        _rp=$(slot_device "$(current_slot)") || return 1
+    else
+        _rp=$(root_device) || return 1
+    fi
     _rp=${_rp##*/}
     [ -n "$_rp" ] || return 1
     _disk=$(readlink -f "/sys/class/block/${_rp}/..") || return 1
