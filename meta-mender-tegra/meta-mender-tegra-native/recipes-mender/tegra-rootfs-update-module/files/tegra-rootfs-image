@@ -72,6 +72,88 @@ root_device() {
     readlink -f "$_r"
 }
 
+# The ESP of the disk the running system booted from.
+#
+# A board can carry more than one Tegra layout, an NVMe and an SD card being the
+# obvious pair, and then every name the ESP could be pinned by is duplicated:
+# both carry the partition label 'esp', both carry the same filesystem UUID
+# because both were written from the same esp.img, and the partition UUIDs are
+# unique but only assigned at flash time. So /dev/disk/by-partlabel/esp points
+# at whichever disk udev settled last, and nothing puts the ESP in fstab at all:
+# the mount comes from systemd's gpt-auto generator, which picks one.
+#
+# Staging the capsule on the other disk's ESP arms nothing. UEFI reads the
+# capsule from the medium it booted, so the slot switch simply does not happen,
+# and the deployment fails a reboot later with a slot mismatch.
+#
+# The disk the running rootfs came from is the only trustworthy statement of
+# which medium UEFI booted, which is the same reasoning assert_slot_mapping_sane
+# already applies when it trusts the mounted root over the partition labels.
+esp_device() {
+    _rp=$(root_device) || return 1
+    _rp=${_rp##*/}
+    [ -n "$_rp" ] || return 1
+    _disk=$(readlink -f "/sys/class/block/${_rp}/..") || return 1
+    _disk=${_disk##*/}
+    [ -n "$_disk" ] && [ "$_disk" != "block" ] || return 1
+
+    _esp=$(lsblk -n -r -o NAME,PARTLABEL "/dev/$_disk" 2>/dev/null \
+           | awk '$2 == "esp" { print "/dev/" $1; exit }')
+    if [ -z "$_esp" ]; then
+        # No lsblk, or a build of it without PARTLABEL. The recovery system is an
+        # initramfs and is exactly this case.
+        for _cand in /sys/class/block/"$_disk"/"$_disk"*; do
+            [ -e "$_cand/partition" ] || continue
+            _n=${_cand##*/}
+            [ "$(blkid -o value -s PARTLABEL "/dev/$_n" 2>/dev/null)" = "esp" ] || continue
+            _esp="/dev/$_n"
+            break
+        done
+    fi
+    [ -n "$_esp" ] || return 1
+    echo "$_esp"
+}
+
+# Device currently backing $ESP_MOUNT, empty when nothing is mounted there.
+esp_mounted_device() {
+    _m=$(while read -r dev mnt _rest; do
+             [ "$mnt" = "$ESP_MOUNT" ] && { echo "$dev"; break; }
+         done < "$PROC_MOUNTS")
+    [ -n "$_m" ] || return 0
+    readlink -f "$_m"
+}
+
+# Make $ESP_MOUNT the ESP of the booted disk, remounting if something else got
+# there first. Returns non-zero when that cannot be arranged, so the caller
+# decides whether it is fatal: it is when a capsule is about to be staged, and
+# it is not when an old one is merely being cleaned up.
+ensure_esp_mounted() {
+    _want=$(esp_device) || {
+        log "cannot determine the ESP of the booted disk"
+        return 1
+    }
+    _have=$(esp_mounted_device)
+    if [ "$_have" = "$_want" ]; then
+        log "ESP $_want mounted at $ESP_MOUNT"
+        return 0
+    fi
+    if [ -n "$_have" ]; then
+        log "$ESP_MOUNT is $_have but the booted disk's ESP is $_want; remounting"
+        umount "$ESP_MOUNT" || {
+            log "cannot unmount $ESP_MOUNT"
+            return 1
+        }
+    else
+        log "nothing mounted at $ESP_MOUNT; mounting the booted disk's ESP $_want"
+    fi
+    mkdir -p "$ESP_MOUNT"
+    mount "$_want" "$ESP_MOUNT" || {
+        log "cannot mount $_want at $ESP_MOUNT"
+        return 1
+    }
+    return 0
+}
+
 # Never write to the slot we are running from. nvbootctrl and the mounted root
 # must agree about which slot is active; if they do not, the slot bookkeeping is
 # wrong and writing would destroy the running system mid-update. Fail the
@@ -253,10 +335,11 @@ case "$STATE" in
         log "clearing any unbootable flag on slot $_passive"
         clear_unbootable "$_passive"
 
-        # The ESP has to be mounted, or the capsule silently lands on the rootfs
-        # and no switch is armed.
-        if ! grep -q " $ESP_MOUNT " "$PROC_MOUNTS" 2>/dev/null; then
-            log "FATAL: $ESP_MOUNT is not mounted; the capsule would land on the rootfs"
+        # The ESP has to be mounted, and it has to be the one belonging to the
+        # disk this system booted from, or the capsule lands somewhere UEFI
+        # never reads and no switch is armed.
+        if ! ensure_esp_mounted; then
+            log "FATAL: no usable ESP at $ESP_MOUNT; the capsule would arm nothing"
             exit 1
         fi
 
@@ -323,6 +406,10 @@ case "$STATE" in
         # Remove a staged-but-unapplied capsule unconditionally, before anything
         # else can fail. Leaving it behind is the dangerous outcome: the next
         # reboot would switch to the slot being abandoned.
+        # Best effort: an unconsumed capsule sits on the booted disk's ESP, which
+        # may not be what is mounted now. Not fatal, the update already has a
+        # verdict by this point.
+        ensure_esp_mounted || log "continuing cleanup against $ESP_MOUNT as mounted"
         if [ -e "$ESP_CAPSULE" ]; then
             log "removing staged capsule $ESP_CAPSULE"
             rm -f "$ESP_CAPSULE"
