@@ -54,13 +54,39 @@ log() {
 # Slot number (0/1) -> the real device node for that slot's rootfs. The BSP
 # names the partitions, but the symlink is resolved before use: the stock
 # rootfs-image module does the same before handing a path to mender-flash.
+# The disk / was mounted from. On a board carrying two Tegra layouts the partition
+# labels are duplicated, so the by-partlabel symlinks point at whichever disk udev
+# settled last. Empty when it cannot be worked out, for instance from a recovery
+# ramdisk, and callers then fall back to the symlink.
+booted_disk() {
+    _bd_root=$(readlink -f "$(awk '$2 == "/" { print $1; exit }' "$PROC_MOUNTS")" 2>/dev/null)
+    _bd_part=${_bd_root##*/}
+    [ -n "$_bd_part" ] || return 1
+    _bd_disk=$(readlink -f "/sys/class/block/${_bd_part}/..") || return 1
+    _bd_disk=${_bd_disk##*/}
+    [ -n "$_bd_disk" ] && [ "$_bd_disk" != "block" ] || return 1
+    echo "$_bd_disk"
+}
+
+# Prefer the label as it appears on the booted disk, and fall back to the symlink.
+# assert_slot_mapping_sane still cross-checks the result against the mounted root,
+# so a wrong answer is refused either way; this makes the right answer the one that
+# is normally used, rather than relying on udev having settled favourably.
 slot_device() {
     case "$1" in
-        0) _lbl="${PARTLABEL_DIR}/APP" ;;
-        1) _lbl="${PARTLABEL_DIR}/APP_b" ;;
+        0) _lbl_name="APP" ;;
+        1) _lbl_name="APP_b" ;;
         *) echo "unexpected rootfs slot '$1'" 1>&2; return 1 ;;
     esac
-    readlink -f "$_lbl"
+    if _disk=$(booted_disk); then
+        _on_disk=$(lsblk -n -r -o NAME,PARTLABEL "/dev/$_disk" 2>/dev/null \
+                   | awk -v l="$_lbl_name" '$2 == l { print "/dev/" $1; exit }')
+        if [ -n "$_on_disk" ]; then
+            echo "$_on_disk"
+            return 0
+        fi
+    fi
+    readlink -f "${PARTLABEL_DIR}/${_lbl_name}"
 }
 
 # Device the root filesystem is actually mounted from, canonicalised the same
