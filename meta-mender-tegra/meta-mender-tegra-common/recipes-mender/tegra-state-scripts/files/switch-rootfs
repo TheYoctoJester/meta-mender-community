@@ -21,45 +21,60 @@ reset_unbootable_status() {
 	set_efi_var "RootfsStatus${slot}" "781e084c-a330-417c-b678-38e696380cb9" "$value"
 }
 
-current_slot=`get_bootpart`
-echo "current_slot=$current_slot" >&2
-
-next_slot=
-next_rootfs_dev=
-if [ $current_slot = "0" ]; then
-	next_slot="1"
-	next_rootfs_dev="/dev/disk/by-partlabel/APP_b"
-else
-	next_slot="0"
-	next_rootfs_dev="/dev/disk/by-partlabel/APP"
-fi
-
-# Stage the capsule on the ESP of the disk this system booted from.
+# Everything below is derived from the disk this system booted from.
 #
 # A board can carry more than one Tegra layout, an NVMe and an SD card being the
-# obvious pair. Both then have a partition labelled 'esp' and, having been written
-# from the same esp.img, the same filesystem UUID, so nothing pins /boot/efi and
-# systemd's gpt-auto generator mounts whichever it finds first.
+# obvious pair. Both then have partitions labelled APP, APP_b and esp, and the two
+# ESPs even share a filesystem UUID, having been written from the same esp.img. So
+# /dev/disk/by-partlabel points at whichever disk udev settled last, and nothing
+# pins /boot/efi at all: systemd's gpt-auto generator mounts whichever it finds.
 #
-# Getting this wrong is silent. UEFI reads the capsule from the medium it booted,
-# so a capsule on the other disk arms nothing, the boot chain never switches, and
-# mender commits anyway: the device reports the new artifact while still running
-# the old rootfs. The mounted root is the only trustworthy statement of which
-# medium booted.
+# Getting either wrong is silent. A capsule staged on the other disk's ESP arms
+# nothing, because UEFI reads it from the medium it booted, so the boot chain
+# never switches and mender commits anyway: the device reports the new artifact
+# while still running the old rootfs. Reading the capsule out of the other disk's
+# slot is the same class of mistake one step earlier.
 #
-# Note that next_rootfs_dev above has the same exposure through
-# /dev/disk/by-partlabel, which is equally duplicated on such a board.
-ensure_esp_mounted() {
-	local root part disk want have
+# The mounted root is the only trustworthy statement of which medium booted, so
+# resolve against it and refuse rather than guess.
+booted_disk() {
+	local root part disk
 	root=$(readlink -f "$(awk '$2 == "/" { print $1; exit }' /proc/mounts)")
 	part=${root##*/}
-	[ -n "$part" ] || return 0
+	[ -n "$part" ] || return 1
 	disk=$(readlink -f "/sys/class/block/${part}/..")
 	disk=${disk##*/}
-	[ -n "$disk" ] && [ "$disk" != "block" ] || return 0
-	want=$(lsblk -n -r -o NAME,PARTLABEL "/dev/$disk" 2>/dev/null \
-	       | awk '$2 == "esp" { print "/dev/" $1; exit }')
-	[ -n "$want" ] || return 0
+	[ -n "$disk" ] && [ "$disk" != "block" ] || return 1
+	echo "$disk"
+}
+
+partlabel_on_disk() {  # <disk> <label>
+	lsblk -n -r -o NAME,PARTLABEL "/dev/$1" 2>/dev/null \
+	 | awk -v l="$2" '$2 == l { print "/dev/" $1; exit }'
+}
+
+# The partlabel symlink is only acceptable when it lands on the booted disk.
+resolve_slot_dev() {  # <disk> <label>
+	local dev
+	dev=$(partlabel_on_disk "$1" "$2")
+	if [ -z "$dev" ]; then
+		dev=$(readlink -f "/dev/disk/by-partlabel/$2" 2>/dev/null || true)
+		case "$dev" in
+			/dev/"$1"*) ;;
+			*) return 1 ;;
+		esac
+	fi
+	[ -n "$dev" ] || return 1
+	echo "$dev"
+}
+
+ensure_esp_mounted() {  # <disk>
+	local want have
+	want=$(partlabel_on_disk "$1" esp)
+	if [ -z "$want" ]; then
+		echo "cannot find an esp partition on /dev/$1; leaving /boot/efi as mounted" >&2
+		return 0
+	fi
 	have=$(awk '$2 == "/boot/efi" { print $1; exit }' /proc/mounts)
 	[ -n "$have" ] && have=$(readlink -f "$have")
 	[ "$have" = "$want" ] && return 0
@@ -69,10 +84,34 @@ ensure_esp_mounted() {
 	mount "$want" /boot/efi
 }
 
+current_slot=`get_bootpart`
+echo "current_slot=$current_slot" >&2
+
+booted=$(booted_disk) || {
+	echo "ERR: cannot determine which disk / was mounted from" >&2
+	exit 1
+}
+
+next_slot=
+next_label=
+if [ $current_slot = "0" ]; then
+	next_slot="1"
+	next_label="APP_b"
+else
+	next_slot="0"
+	next_label="APP"
+fi
+
+next_rootfs_dev=$(resolve_slot_dev "$booted" "$next_label") || {
+	echo "ERR: cannot resolve $next_label on the booted disk /dev/$booted" >&2
+	exit 1
+}
+echo "next slot $next_slot is $next_rootfs_dev on /dev/$booted" >&2
+
 tmp_mount=`mktemp -d`
 
 reset_unbootable_status $next_slot
-ensure_esp_mounted
+ensure_esp_mounted "$booted"
 mkdir -p /boot/efi/EFI/UpdateCapsule
 mount -o ro $next_rootfs_dev $tmp_mount
 cp ${tmp_mount}/opt/nvidia/UpdateCapsule/tegra-bl.cap /boot/efi/EFI/UpdateCapsule/TEGRA_BL.Cap
