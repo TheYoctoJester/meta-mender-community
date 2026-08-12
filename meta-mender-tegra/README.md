@@ -116,6 +116,28 @@ To solve this issue we create a new [custom partition layout](meta-mender-tegra-
 
 It is possible to auto-grow the UDA partition to fill remaining space with [this](https://gist.github.com/rishabnayak/a734d2720f43b8908e59564c14fa52e9) bbappend in a layer above `meta-mender-tegra`. It sets the UDA allocation attribute to `0x808`, removes partition id numbers, and moves the UDA partition to right before the `secondary_gpt` partition following [Nvidia documentation](https://docs.nvidia.com/jetson/archives/r35.6.0/DeveloperGuide/AR/BootArchitecture/PartitionConfiguration.html#partition-child-elements).
 
+### Data partition size
+
+`MENDER_DATA_PART_SIZE_MB` sizes both the ext4 data image and the layout
+partition that image is flashed into. The size is written into NVIDIA's staged
+layouts at `do_install` time, replacing the template's hardcoded value (400 MiB
+`UDA` on t234 and t264), so the two cannot disagree.
+
+The partition it applies to is `TEGRA_MENDER_DATA_PART_NAME`, default `UDA`,
+which is also the partition whose `<filename>` is rewritten to `DATAFILE`.
+Machines taking their external layout from `tegra-storage-layout` as a direct
+file path, `p3768-0000-p3767-0000` among them, never pass through that rewrite;
+that layout sizes `permanet_user_storage` with allocation attribute `0x808`
+instead, which fills the device.
+
+The size is applied exactly, so the 128 MiB default is smaller than the 400 MiB
+the templates allocate. A build that relied on first-boot growfs expanding the
+filesystem into that 400 MiB has to set the variable.
+
+Fit stays the integrator's responsibility: the A/B slots, the data partition and
+the layout's fixed partitions must together fit the device, or `tegraparser`
+aborts GPT generation.
+
 ## The classic update scheme
 
 Mender's stock `rootfs-image` update module is written for u-boot and GRUB
