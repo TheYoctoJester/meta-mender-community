@@ -87,15 +87,32 @@ IMAGE_BOOT_FILES = "u-boot-dtb.bin"
 # You will need to update these partition values when you update the flash layout.  One way to find the correct number is to
 # boot into an emergency shell and examine the /dev/mmcblk* devices,
 # or use the uboot console to look at mtdparts
-MENDER_DATA_PART_NUMBER_DEFAULT:tegra234 = "15"
-# ...except where we substitute our own external layout, which moves the data
-# image off UDA and onto permanet_user_storage so that it is the last partition
-# and can be grown. Keep this in step with the PARTITION_FILE_EXTERNAL override
-# in recipes-bsp/tegra-binaries/tegra-storage-layout_%.bbappend.
-MENDER_DATA_PART_NUMBER_DEFAULT:p3768-0000-p3767-0000 = "17"
-# t264 stock A/B NVMe layout (flash_l4t_t264_nvme_rootfs_ab.xml): APP=id1=p1,
-# APP_b=id2=p2, UDA=p11 (confirmed via nvflashxmlparse).
-MENDER_DATA_PART_NUMBER_DEFAULT:tegra264 = "11"
+# The data image goes on permanet_user_storage, a partition that
+# recipes-bsp/tegra-binaries/tegra-storage-layout-base_%.bbappend appends after
+# APP_b in whatever layout the machine already selected, and never on UDA, which
+# NVIDIA reserve for their own OTA process. No layout is shipped here, and
+# nothing has to be kept in step by hand: that bbappend re-reads the layout it
+# produced and fails the build if the number below disagrees with it.
+#
+# The number differs per family because the appended partition follows on from
+# the highest id the stock layout already uses: 16 partitions on both t234
+# layouts, 12 on t264. The legacy UDA numbers are what those layouts give it in
+# place, 15 and 11, so both follow from the same choice and cannot be set
+# inconsistently by accident.
+#
+# The name is declared here rather than in the bbappend that uses it because
+# every recipe has to agree on it, the image recipes above all: they are what
+# bakes the partition number into /etc/fstab. Scoped to the bbappend it would
+# read as unset everywhere else and the numbers below would be right only by
+# accident.
+TEGRA_MENDER_DATA_PART_NAME ?= "permanet_user_storage"
+
+MENDER_DATA_PART_NUMBER_DEFAULT:tegra234 = "${@'15' if d.getVar('TEGRA_MENDER_DATA_PART_NAME') == 'UDA' else '17'}"
+MENDER_DATA_PART_NUMBER_DEFAULT:tegra264 = "${@'11' if d.getVar('TEGRA_MENDER_DATA_PART_NAME') == 'UDA' else '13'}"
+# d.getVar() inside inline python is invisible to bitbake's dependency tracking,
+# so without this the basehash changes between parse and reparse and the build
+# fails with "the metadata is not deterministic and this needs to be fixed".
+MENDER_DATA_PART_NUMBER_DEFAULT[vardeps] += "TEGRA_MENDER_DATA_PART_NAME"
 MENDER_ROOTFS_PART_A_NUMBER_DEFAULT = "1"
 MENDER_ROOTFS_PART_B_NUMBER_DEFAULT:tegra234 = "2"
 MENDER_ROOTFS_PART_B_NUMBER_DEFAULT:tegra264 = "2"

@@ -104,17 +104,71 @@ board carries one.
 Jetpack 5 and 6 machines are covered by the `scarthgap` configurations in the
 same repository.
 
-### Jetson Orin NX
+### The data partition
 
-Mender leverages the UDA partition to store the persistent data between updates. But with the
-Orin NX which uses an NVMe the current process doesn't work. Based on nvidia feedback [UDA is
-reserved](https://forums.developer.nvidia.com/t/jetson-orin-nx-custom-partition-layout-fails-with-uda-at-the-end/316401/6) by nvidia.
+Mender's persistent data does not go on `UDA`, the partition NVIDIA's layouts
+provide for it. NVIDIA state that `UDA` is ["reserved by NV for OTA
+process"](https://forums.developer.nvidia.com/t/jetson-orin-nx-custom-partition-layout-fails-with-uda-at-the-end/316401/6),
+and the thread that answer comes from is someone moving `UDA` to the end of a
+custom layout so it could grow, which fails.
 
-To solve this issue we create a new [custom partition layout](meta-mender-tegra-common/recipes-bsp/tegra-binaries/tegra-storage-layout/flash_l4t_t234_nvme_rootfs_ab.xml) with a dedicated partition, `permanet_user_storage` at `id=17`, for persistent data. `UDA` is left without a filename in that layout.
+So `tegra-storage-layout-base` appends a separate `permanet_user_storage`
+partition to the machine's layout, after `APP_b` and marked fill-to-end
+(`allocation_attribute 0x808`), and writes `DATAFILE` there. `UDA` is left
+exactly as NVIDIA shipped it.
 
-### Auto Grow UDA Partition
+Three things follow from the partition being last and fill-to-end:
 
-It is possible to auto-grow the UDA partition to fill remaining space with [this](https://gist.github.com/rishabnayak/a734d2720f43b8908e59564c14fa52e9) bbappend in a layer above `meta-mender-tegra`. It sets the UDA allocation attribute to `0x808`, removes partition id numbers, and moves the UDA partition to right before the `secondary_gpt` partition following [Nvidia documentation](https://docs.nvidia.com/jetson/archives/r35.6.0/DeveloperGuide/AR/BootArchitecture/PartitionConfiguration.html#partition-child-elements).
+- `/data` takes whatever remains of the medium rather than 400 MiB. On a 64 GB
+  card that is about 28 GiB.
+- `mender-growfs-data` has nothing left to do, instead of failing every boot
+  with `Error: Can't have overlapping partitions.` as it does when the data
+  partition sits ahead of the rootfs slots.
+- The medium is fully allocated. `make-sdcard`'s `find_finalpart` takes the
+  first fill-to-end partition and only falls back to its `APP`/`APP_b` special
+  case when there is none, which is what used to leave half a card unused.
+
+No layouts are shipped by this layer. The partition is derived into whichever
+layout the machine already selected, so machines with no configuration here are
+covered on the same terms and an L4T bump needs no maintenance.
+
+The partition number is not uniform, because it follows on from the highest id
+the stock layout already uses: `p17` on both t234 layouts and `p13` on t264.
+`MENDER_DATA_PART_NUMBER_DEFAULT` states it per family and `do_install` fails
+the build if the two disagree, since that number lands in `/etc/fstab` and a
+mismatch mounts the wrong device or none.
+
+#### Keeping the old arrangement
+
+`TEGRA_MENDER_DATA_PART_NAME = "UDA"` puts the data image back on `UDA`, which
+is what every machine except `p3768-0000-p3767-0000` did previously. Nothing is
+appended when the named partition already exists, and the data partition numbers
+follow the same variable, so the two cannot be set inconsistently.
+
+Existing fleets need this. The partition number is in `/etc/fstab` in the rootfs,
+so a device flashed with its data on `UDA` that takes a rootfs update built for
+the trailing partition mounts a partition that is not there. Moving a fleet
+across means reflashing it, not updating it.
+
+### Data partition size
+
+`MENDER_DATA_PART_SIZE_MB` sizes the ext4 data image, and is written into the
+layout as the data partition's size at `do_install` time so the two cannot
+disagree.
+
+On the default arrangement that size is only a floor, since the partition is
+fill-to-end and grows past it. It is load-bearing on the `UDA` path above, where
+the partition is fixed-size: without it, raising the variable produces an image
+that no longer fits the 400 MiB the templates allocate.
+
+Fit stays the integrator's responsibility either way: the A/B slots, the data
+partition and the layout's fixed partitions must together fit the device, or
+`tegraparser` aborts GPT generation.
+
+`TEGRA_MENDER_UDA_SIZE_MB` is the former name for this and still works: it feeds
+`TEGRA_MENDER_DATA_PART_SIZE_MB`, so a configuration written against it needs no
+change. Setting either one empty skips the size rewrite and leaves the layout's
+own size alone, which on the `UDA` path above means the template's 400 MiB.
 
 ## The classic update scheme
 
